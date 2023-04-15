@@ -1,0 +1,75 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: 
+//   Authors: 
+//   Version: 
+//   Purpose: 
+//  Category: 
+// File Mask: 
+//  ID Bytes: 
+//   History: 
+//------------------------------------------------
+LittleEndian();
+
+struct Header
+{
+    ushort magic;
+    if (magic != 0x4C37)
+      Print("Invalid magic");
+    ushort headerSize;
+    ushort architecture;
+    char title[0x50];
+    ushort flags;
+    if (flags != 2 && flags != 258)
+      Print("Invalid header flags");
+} header;
+
+struct OffsetSize
+{
+    uint offset;
+    uint size;
+};
+
+struct SecondHeaderNew32
+{
+    uint entryId;
+    uint scriptSizes[0x30]; // might be smaller
+    uint scriptCount;
+    uint maxFadeColors;
+    uint maxTransColors;
+    uint additionalResources;
+    uint countStrings;
+    uint countVariables;
+    uint maxScrMsg;
+    uint unk[8];
+    byte buildType;
+    ushort unk2;
+    byte checksumCorrection;
+    uint unk3;
+    uint unk4;
+    OffsetSize keyResources[15];
+};
+
+struct SecondHeaderOld16
+{
+    byte gap[0xA];
+    uint scriptSizes[0x20];
+    ushort scriptCount;
+    ushort maxFadeColors;
+    ushort maxTransColors;
+    ushort maybeAdditionalResources;
+    ushort countStrings;
+    ushort countVariables;
+    byte buildType;
+    byte gap2[3];
+    OffsetSize keyResources[14];
+};
+
+local uint secondHeaderSize = header.headerSize - 0x58;
+if (header.flags == 258 && header.architecture == 0x3233)
+    SecondHeaderNew32 secondHeader;
+else if (header.flags == 2 && header.architecture == 0x3631)
+    SecondHeaderOld16 secondHeader;
+else
+    Fatal("Invalid combination of flags and architecture");
