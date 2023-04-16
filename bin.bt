@@ -12,7 +12,7 @@
 //------------------------------------------------
 LittleEndian();
 
-struct Header
+struct MetaHeader
 {
     ushort magic;
     if (magic != 0x4C37)
@@ -20,8 +20,8 @@ struct Header
     ushort headerSize;
     ushort architecture;
     char title[0x50];
-    ushort flags;
-    if (flags != 2 && flags != 258)
+    ushort version;
+    if (version != 2 && version != 258)
       Print("Invalid header flags");
 } header;
 
@@ -31,7 +31,26 @@ struct OffsetSize
     uint size;
 };
 
-struct SecondHeaderNew32
+enum KeyResourceID
+{
+    Resources,
+    Entries,
+    IndexBuffers,
+    Variables,
+    ConstStrings,
+    Scripts,
+    Palette_,
+    NameTable,
+    Unknown8,
+    Unknown9,
+    Plugins,
+    PluginProcs,
+    PluginIndexPerProc,
+    Unknown13,
+    SourceFile
+};
+
+struct ResHeaderNew32
 {
     uint entryId;
     uint scriptSizes[0x30]; // might be smaller
@@ -51,14 +70,14 @@ struct SecondHeaderNew32
     OffsetSize keyResources[15];
 };
 
-struct SecondHeaderOld16
+struct ResHeaderOld16
 {
     byte gap[0xA];
     uint scriptSizes[0x20];
     ushort scriptCount;
     ushort maxFadeColors;
     ushort maxTransColors;
-    ushort maybeAdditionalResources;
+    ushort additionalResources;
     ushort countStrings;
     ushort countVariables;
     byte buildType;
@@ -66,10 +85,209 @@ struct SecondHeaderOld16
     OffsetSize keyResources[14];
 };
 
-local uint secondHeaderSize = header.headerSize - 0x58;
-if (header.flags == 258 && header.architecture == 0x3233)
-    SecondHeaderNew32 secondHeader;
-else if (header.flags == 2 && header.architecture == 0x3631)
-    SecondHeaderOld16 secondHeader;
+local uint resHeaderSize = header.headerSize - 0x58; // TODO: Add assertion
+if (header.version == 258 && header.architecture == 0x3233)
+    ResHeaderNew32 resHeader;
+else if (header.version == 2 && header.architecture == 0x3631)
+    ResHeaderOld16 resHeader;
 else
     Fatal("Invalid combination of flags and architecture");
+
+// Resources
+enum <byte> ResourceType
+{
+    Bitmap = 1,
+    Data,
+    File,
+    Frame,
+    Ground,
+    Midi,
+    Model,
+    MProto,
+    Obj3D,
+    OProto,
+    Table,
+    Wave,
+    Movie,
+    Array,
+    Cell,
+    Group,
+    Palette,
+    Queue,
+    Script,
+    Sprite,
+    Text,
+    Tile,
+    Title,  
+    Subtitle,
+    Local,
+    Entry
+};
+struct Resource
+{
+  ResourceType type;
+  byte extension;
+  uint offset;
+  uint size;
+};
+FSeek(resHeader.keyResources[0].offset);
+local uint resCount = resHeader.keyResources[0].size / 10;
+if (resCount > 0)
+    Resource resources[resCount];
+
+// Entries
+struct Entry
+{
+    if (header.architecture == 0x3631)
+        ushort s;
+    else
+        uint s;
+    byte data[0x78];
+};
+FSeek(resHeader.keyResources[1].offset);
+local uint entryCount = resHeader.keyResources[1].size / 80; //might be one less
+if (entryCount > 0)
+    Entry entries[entryCount];
+
+// IndexBuffers
+FSeek(resHeader.keyResources[2].offset);
+struct IndexBuffer32
+{
+    byte data[44];
+};
+struct IndexBuffer16
+{
+    byte data[28];
+};
+
+if (header.architecture == 0x3631)
+{
+    local uint indexBufCount = resHeader.keyResources[2].size / sizeof(IndexBuffer16);
+    if (indexBufCount > 0)
+        IndexBuffer16 indexBuffers[indexBufCount];
+}
+else
+{
+    local uint indexBufCount = resHeader.keyResources[2].size / sizeof(IndexBuffer32);
+    if (indexBufCount > 0)
+        IndexBuffer32 indexBuffers[indexBufCount];
+}
+
+// Variables
+FSeek(resHeader.keyResources[3].offset);
+struct Variable32
+{
+    uint k, v;
+};
+struct Variable16
+{
+    ushort k, v;
+};
+if (header.architecture == 0x3631)
+{
+    local uint varCount = resHeader.keyResources[3].size / sizeof(Variable16);
+    if (varCount > 0)
+        Variable16 variables[varCount];
+}
+else
+{
+    local uint varCount = resHeader.keyResources[3].size / sizeof(Variable32);
+    if (varCount > 0)
+        Variable32 variables[varCount];
+}
+
+// Const strings
+struct ConstString
+{
+    string value;
+};
+FSeek(resHeader.keyResources[4].offset);
+
+struct StringSection(int index)
+{
+    local int64 end = FTell() + resHeader.keyResources[index].size;
+    while(FTell() < end)
+        ConstString entry;
+    if (FTell() != end)
+        Print("Blew out some string section");
+};
+StringSection constStrings(4);
+
+// Scripts
+FSeek(resHeader.keyResources[5].offset);
+struct Scripts
+{
+    local int i;
+    for (i = 0; i < resHeader.scriptCount && resHeader.scriptSizes[i] > 0; i++)
+        byte script[resHeader.scriptSizes[i]];
+} scripts;
+
+// Palette
+FSeek(resHeader.keyResources[6].offset);
+struct Color
+{
+    ubyte r, g, b, reserved;
+};
+struct Palette
+{
+    local int count = resHeader.keyResources[6].size / 4;
+    if (count > 0)
+        Color colors[count];
+} palette;
+
+// NameTable
+FSeek(resHeader.keyResources[7].offset);
+StringSection nameTable(7); 
+
+// Plugins
+FSeek(resHeader.keyResources[10].offset);
+StringSection plugins(10);
+
+// PluginProcs
+FSeek(resHeader.keyResources[11].offset);
+StringSection pluginProcs(11);
+
+// PluginIndexPerProc
+FSeek(resHeader.keyResources[12].offset);
+if (header.architecture == 0x3631)
+{
+    local int count = resHeader.keyResources[12].size / sizeof(ushort);
+    if (count > 0)
+        ushort pluginIndexPerProc[count];
+}
+else
+{
+    local int count = resHeader.keyResources[12].size / sizeof(uint);
+    if (count > 0)
+        uint pluginIndexPerProc[count];
+}
+
+if (header.architecture != 0x3631 && resHeader.keyResources[14].size > 0)
+{
+    FSeek(resHeader.keyResources[14].offset);
+    string sourceFile;
+}
+
+// Unknown sections (could be much simpler on newer 010 versions D: )
+local int i;
+local int keyResourceCount = header.architecture == 0x3631 ? 14 : 15;
+struct UnknownKeyResource(int index, int size)
+{
+    local int myIndex = index;
+    byte data[size];
+};
+string UnknownKeyResourceName(UnknownKeyResource& r)
+{
+    local char buffer[64];
+    SPrintf(buffer, "keyResource_%d", r.myIndex);
+    return buffer;
+}
+for (i = 8; i < keyResourceCount; i++)
+{
+    if ((i >= 10 && i <= 12) || i == 14)
+        continue;
+    FSeek(resHeader.keyResources[i].offset);
+    if (resHeader.keyResources[i].size > 0)
+        UnknownKeyResource keyResource(i, resHeader.keyResources[i].size)
+        <name=UnknownKeyResourceName>;
+}
