@@ -44,9 +44,17 @@ internal class Program
                     if (!bitmap.IsCompressed)
                         continue;
                     bitmap.Expand();
-                    var pixels = Image.LoadPixelData(bitmap.Data.ToArray()
-                        .Select(i => new Rgba32(i, i, i)).ToArray(), bitmap.AlignedWidth, bitmap.Height);
-                        //.Select(i => (i < resourceFile.Palette.Count ? resourceFile.Palette[i] : new Rgba32(255, 0, 255))).ToArray(), bitmap.AlignedWidth, bitmap.Height);
+                    var pixels = Image.LoadPixelData(bitmap.Data.ToArray().Select(i =>
+                    {
+                        if (i == 0)
+                            return new Rgba32(255, 0, 255);
+                        else if (i < 10)
+                            throw new InvalidDataException("Unexpected color index in bitmap");
+                        else if (i - 10 < resourceFile.Palette.Count)
+                            return resourceFile.Palette[i - 10];
+                        else
+                            throw new InvalidDataException("Unexpected color index in bitmap");
+                    }).ToArray(), bitmap.AlignedWidth, bitmap.Height);
                     pixels.SaveAsPng(Path.Join(bitmapPath, $"{index}.png"));
                 }
 
