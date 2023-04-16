@@ -189,6 +189,7 @@ public unsafe class ResourceFile
     }
 
     public ResourceArchitecture Architecture { get; }
+    public ushort Version { get; }
     public string Title { get; }
     public string SubTitle { get; }
     public uint EntryId { get; }
@@ -235,6 +236,7 @@ public unsafe class ResourceFile
         ReadOnlySpan<OffsetSize> keyResources = MemoryMarshal.Cast<ulong, OffsetSize>(new ReadOnlySpan<ulong>(res.KeyResources, 15));
 
         Architecture = meta.Architecture;
+        Version = meta.Version;
         (Title, SubTitle) = ExtractTitles(meta);
         EntryId = res.EntryId;
         MaxFadeColors = res.MaxFadeColors;
@@ -417,5 +419,24 @@ public unsafe class ResourceFile
             .Range(0, bytes.Length / 4)
             .Select(i => new Rgba32(bytes[i * 4 + 0], bytes[i * 4 + 1], bytes[i * 4 + 2], 255))
             .ToArray();
+    }
+
+    private FileStream OpenResourceStream(byte extension)
+    {
+        if (Version == 2)
+            return new FileStream(extensionBasePath + ".bin", FileMode.Open, FileAccess.Read);
+        else
+            return new FileStream($"{extensionBasePath}.{extension:D3}", FileMode.Open, FileAccess.Read);
+    }
+
+    public byte[] ReadResource(Resource resource)
+    {
+        using var stream = OpenResourceStream(resource.Extension);
+        if (resource.Offset + resource.Size > stream.Length)
+            throw new InvalidDataException("Invalid resource range");
+        var result = new byte[resource.Size];
+        stream.Position = resource.Offset;
+        stream.ReadExactly(result.AsSpan());
+        return result;
     }
 }
