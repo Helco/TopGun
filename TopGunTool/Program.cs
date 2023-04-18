@@ -10,7 +10,33 @@ namespace TopGunTool;
 
 internal class Program
 {
-    static void Main(string[] args) => MainConvert(args);
+    static void Main(string[] args) => MainPrintScripts(args);
+
+    static void MainPrintScripts(string[] args)
+    {
+        var allPaths = Directory.GetFiles(@"C:\dev\TopGun\games", "*.bin", SearchOption.AllDirectories);
+        var allResFiles = new List<ResourceFile>();
+        foreach (var resFilePath in allPaths)
+        {
+            if (!resFilePath.Contains("tama"))
+                continue;
+
+            var resourceFile = new ResourceFile(resFilePath);
+            foreach (var (index, res) in resourceFile.Resources.Select((r, i) => (i, r)).Where(t => t.r.Type == ResourceType.Script))
+            {
+                var scriptFull = resourceFile.ReadResource(res);
+
+                Console.WriteLine();
+                Console.WriteLine();
+                Console.WriteLine($"{Path.GetFileNameWithoutExtension(resFilePath)} - {index}");
+                //Console.WriteLine(Convert.ToHexString(scriptFull));
+
+                ReadOnlySpan<byte> script = scriptFull.AsSpan();
+                while (!script.IsEmpty)
+                    Console.WriteLine(new ScriptRootInstruction(ref script));
+            }
+        }
+    }
 
     static void MainConvertSingle(string[] args)
     {

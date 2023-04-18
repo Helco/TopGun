@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using static TopGun.SpanUtils;
 
@@ -111,6 +112,49 @@ public readonly struct ScriptRootInstruction
 
     private readonly byte[] data;
     public ReadOnlySpan<byte> Data => data;
+
+    public string ToStringWithoutData()
+    {
+        var text = new StringBuilder();
+        text.Append(Op);
+
+        bool firstArg = true;
+        foreach (var arg in Args)
+        {
+            if (firstArg)
+                firstArg = false;
+            else
+                text.Append(',');
+            text.Append(' ');
+
+            if (arg.Name != "")
+            {
+                text.Append(arg.Name);
+                text.Append(": ");
+            }
+
+            text.Append(arg.IsIndirect ? '[' : '#');
+            text.Append(arg.Value);
+            if (arg.IsIndirect)
+                text.Append(']');
+        }
+
+        if (StringArg != null)
+        {
+            text.Append(" \"");
+            text.Append(StringArg);
+            text.Append('\"');
+        }
+        return text.ToString();
+    }
+
+    public override string ToString()
+    {
+        var result = ToStringWithoutData();
+        if (data.Any())
+            result += " " + string.Join("", data.Select(d => d.ToString("X2")));
+        return result;
+    }
 
     public ScriptRootInstruction(ref ReadOnlySpan<byte> script)
     {
@@ -330,7 +374,7 @@ public readonly struct ScriptRootInstruction
                     new(stringId, PopBool(ref script), "arg"),
                     new(value, false, "stringId")
                 };
-                PopByte(ref script);
+                PopBytes(ref script, 1);
                 break;
 
             case ScriptRootOp.DeleteIniSection:
@@ -524,7 +568,6 @@ public readonly struct ScriptRootInstruction
                 left = PopInt(ref script);
                 right = PopInt(ref script);
                 condOp = PopByte(ref script);
-                PopBytes(ref script, 3);
                 leftInd = PopBool(ref script);
                 rightInd = PopBool(ref script);
                 PopByte(ref script);
@@ -541,11 +584,11 @@ public readonly struct ScriptRootInstruction
             case ScriptRootOp.JumpIfCalc_alt:
                 then = PopInt(ref script);
                 @else = PopInt(ref script);
-                if (then <= 0 && @else <= 0)
+                if (then <= 10 && @else <= 10)
                     throw new NotSupportedException("Cannot figure out size of JumpIfCalc root op");
-                else if (then <= 0) data = PopBytes(ref script, @else).ToArray();
-                else if (@else <= 0) data = PopBytes(ref script, then).ToArray();
-                else data = PopBytes(ref script, Math.Min(then, @else)).ToArray(); // in original there is only else regarded
+                else if (then <= 0) data = PopBytes(ref script, @else - 10).ToArray();
+                else if (@else <= 0) data = PopBytes(ref script, then - 10).ToArray();
+                else data = PopBytes(ref script, Math.Min(then, @else) - 10).ToArray(); // in original there is only else regarded
                 Args = new Arg[]
                 {
                     new(then, false, "then"),
@@ -855,7 +898,7 @@ public readonly struct ScriptRootInstruction
             case ScriptRootOp.Return:
             case ScriptRootOp.ComplexCalc:
                 Args = Array.Empty<Arg>();
-                data = PopBytes(ref script, PopInt(ref script)).ToArray();
+                data = PopBytes(ref script, PopInt(ref script) - 2 - 4).ToArray();
                 break;
 
             case ScriptRootOp.Animate:
@@ -969,7 +1012,7 @@ public readonly struct ScriptRootInstruction
                 PopByte(ref script);
                 var stringIdInd = PopBool(ref script);
                 var formatCount = PopByte(ref script);
-                PopByte(ref script);
+                PopBytes(ref script, 3);
                 args = new List<Arg>(2 + formatCount * 2)
                 {
                     new(target, false, "target"),
@@ -980,7 +1023,7 @@ public readonly struct ScriptRootInstruction
                     value = PopInt(ref script);
                     flag = PopByte(ref script);
                     valueInd = PopBool(ref script);
-                    args.Add(new(value, valueInd, "value" + i));
+                    args.Add(new(value, valueInd && flag != 0, "value" + i));
                     args.Add(new(flag, false, "isNumber" + i));
                 }
                 PopBytes(ref script, 6 * (6 - formatCount));
@@ -1104,7 +1147,7 @@ public readonly struct ScriptRootInstruction
                 var caseCount = PopUShort(ref script);
                 PopByte(ref script);
                 valueInd = PopBool(ref script);
-                PopBytes(ref script, offsetToCases + 2 - 16);
+                PopBytes(ref script, offsetToCases - 18);
                 args = new List<Arg>(2 + caseCount * 3)
                 {
                     new(value, valueInd, "value"),
@@ -1126,7 +1169,7 @@ public readonly struct ScriptRootInstruction
                 offsetToCases = PopInt(ref script);
                 defaultJump = PopInt(ref script);
                 caseCount = PopUShort(ref script);
-                data = PopBytes(ref script, offsetToCases + 2 - 14).ToArray();
+                data = PopBytes(ref script, offsetToCases - 16).ToArray();
                 args = new List<Arg>(1 + caseCount * 3)
                 {
                     new(defaultJump, false, "defaultJump")

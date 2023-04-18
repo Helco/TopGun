@@ -362,7 +362,7 @@ public unsafe class ResourceFile
             throw new InvalidDataException("Too many script sections");
 
         var result = new byte[res.ScriptCount][];
-        stream.Position = 0;
+        stream.Position = range.Offset;
         var startOffset = 0u;
         for (int i = 0; i < res.ScriptCount; i++)
         {
@@ -431,6 +431,9 @@ public unsafe class ResourceFile
 
     public byte[] ReadResource(Resource resource)
     {
+        if (resource.Type >= ResourceType.Movie && resource.Type <= ResourceType.Tile)
+            return ReadScriptResource(resource);
+
         using var stream = OpenResourceStream(resource.Extension);
         if (resource.Offset + resource.Size > stream.Length)
             throw new InvalidDataException("Invalid resource range");
@@ -438,5 +441,21 @@ public unsafe class ResourceFile
         stream.Position = resource.Offset;
         stream.ReadExactly(result.AsSpan());
         return result;
+    }
+
+    private byte[] ReadScriptResource(Resource resource)
+    {
+        var curOffset = 0;
+        foreach (var scriptSection in ScriptSections)
+        {
+            var resourceEnd = resource.Offset + resource.Size;
+            if (curOffset <= resource.Offset && curOffset + scriptSection.Length >= resourceEnd)
+                return scriptSection[(int)(resource.Offset - curOffset)..(int)(resourceEnd - curOffset)];
+
+            curOffset += scriptSection.Length;
+            if (curOffset > resource.Offset)
+                throw new InvalidDataException("Script resource does not fit into single section");
+        }
+        throw new ArgumentOutOfRangeException(nameof(resource), "Script resource is out of bounds");
     }
 }
