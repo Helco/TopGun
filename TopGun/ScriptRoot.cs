@@ -46,14 +46,19 @@ public enum ScriptRootOp : ushort
     BufferCDC_96 = 96,
     BufferCDC_97 = 97,
     BufferCDC_99 = 99,
+    SetBuffer3E5_101 = 101,
     Jump = 104,
+    Set1943_107 = 107,
     GetKeyState = 106,
     DeleteTimer = 109,
     SpriteSetLevel = 113,
     SetErrFile = 114,
+    Send4C8_116 = 116,
     LoadResource = 117,
+    Set3EF7_120 = 120,
     AudioMute = 122,
     SpriteOffset = 124,
+    Set3F0B_138 = 138,
     AudioPlayCDTrack = 142,
     AudioPlayMidi,
     AudioPlayWave = 145,
@@ -360,6 +365,7 @@ public readonly struct ScriptRootInstruction
             case ScriptRootOp.BkgTransparent60:
             case ScriptRootOp.BkgTransparent61:
             case ScriptRootOp.SetCallScriptProcs62:
+            case ScriptRootOp.SetErrFile:
                 value = PopInt(ref script);
                 Args = new Arg[]
                 {
@@ -600,6 +606,180 @@ public readonly struct ScriptRootInstruction
                     new(unk4, false, "out3"),
                 };
                 PopByte(ref script);
+                break;
+
+            case ScriptRootOp.SetBuffer3E5_101:
+                Args = new Arg[]
+                {
+                    new(PopInt(ref script), false, "target"),
+                    new(PopInt(ref script), PopBool(ref script), "value")
+                };
+                PopByte(ref script);
+                break;
+
+            case ScriptRootOp.Jump:
+                Args = new Arg[]
+                {
+                    new(PopInt(ref script), false, "jumpSize")
+                };
+                break;
+
+            case ScriptRootOp.GetKeyState:
+                Args = new Arg[]
+                {
+                    new(PopInt(ref script), false, "target"),
+                    new(PopInt(ref script), PopBool(ref script), "key")
+                };
+                PopByte(ref script);
+                break;
+
+            case ScriptRootOp.Set1943_107:
+                unk1 = PopInt(ref script);
+                unk2 = PopInt(ref script);
+                Args = new Arg[]
+                {
+                    new(unk1, PopBool(ref script), "unk1"),
+                    new(unk2, PopBool(ref script), "unk2"),
+                    new(PopByte(ref script), false, "flag1"),
+                    new(PopByte(ref script), false, "flag2"),
+                    new(PopByte(ref script), false, "flag3"),
+                    new(PopByte(ref script), false, "flag4"),
+                    new(PopByte(ref script), false, "flag5"),
+                };
+                PopByte(ref script);
+                break;
+
+            case ScriptRootOp.DeleteTimer:
+                Args = new Arg[]
+                {
+                    new(PopInt(ref script), PopBool(ref script))
+                };
+                PopByte(ref script);
+                break;
+
+            case ScriptRootOp.SpriteSetLevel:
+                resIndex = PopInt(ref script);
+                unk1 = PopInt(ref script);
+                Args = new Arg[]
+                {
+                    new(resIndex, PopBool(ref script), "resIndex"),
+                    new(unk1, PopBool(ref script), "unk1")
+                };
+                break;
+
+            case ScriptRootOp.Send4C8_116:
+            case ScriptRootOp.Set3EF7_120:
+            case ScriptRootOp.Set3F0B_138:
+                Args = new Arg[]
+                {
+                    new(PopInt(ref script), PopBool(ref script))
+                };
+                PopByte(ref script);
+                break;
+
+            case ScriptRootOp.LoadResource:
+            case ScriptRootOp.FreeResource:
+                Args = new Arg[]
+                {
+                    new(PopInt(ref script), PopBool(ref script))
+                };
+                PopByte(ref script);
+                break;
+
+            case ScriptRootOp.AudioMute:
+            case ScriptRootOp.AudioPlayCDTrack:
+                Args = new Arg[]
+                {
+                    new(PopUShort(ref script), false)
+                };
+                break;
+
+            case ScriptRootOp.SpriteOffset:
+                sprite = PopInt(ref script);
+                x = PopInt(ref script);
+                y = PopInt(ref script);
+                Args = new Arg[]
+                {
+                    new(sprite, PopBool(ref script), "sprite"),
+                    new(x, PopBool(ref script), "x"),
+                    new(y, PopBool(ref script), "y")
+                };
+                PopByte(ref script);
+                break;
+
+            case ScriptRootOp.AudioPlayMidi:
+                unk1 = PopInt(ref script);
+                unk1Ind = PopBool(ref script);
+                PopByte(ref script);
+                flag1 = PopByte(ref script);
+                flag2 = PopByte(ref script);
+                flag3 = PopByte(ref script);
+                unk2Ind = PopBool(ref script);
+                unk2 = PopInt(ref script);
+                Args = new Arg[]
+                {
+                    new(unk1, unk1Ind, "unk1"),
+                    new(flag1, false, "flag1"),
+                    new(flag2, false, "flag2"),
+                    new(flag3, false, "flag3"),
+                    new(unk2, unk2Ind, "unk2"),
+                };
+                break;
+
+            case ScriptRootOp.AudioPlayWave:
+                unk1 = PopInt(ref script);
+                unk1Ind = PopBool(ref script);
+                PopByte(ref script);
+                unk2 = PopInt(ref script);
+                unk3 = PopInt(ref script);
+                unk4 = PopInt(ref script);
+                unk5 = PopInt(ref script);
+                var unk6 = PopInt(ref script);
+                var unk7 = PopInt(ref script);
+                flag1 = PopByte(ref script);
+                flag2 = PopByte(ref script);
+                flag3 = PopByte(ref script);
+                var unk7Ind = PopBool(ref script);
+                var unk8 = PopInt(ref script);
+                Args = new Arg[]
+                {
+                    new (unk1, unk1Ind, "unk1"),
+                    new (unk2, false, "unk2"),
+                    new (unk3, false, "unk3"),
+                    new (unk4, false, "unk4"),
+                    new (unk5, false, "unk5"),
+                    new (unk6, false, "unk6"),
+                    new (flag1, false, "flag1"),
+                    new (flag2, false, "flag2"),
+                    new (flag3, false, "flag3"),
+                    new (unk7, unk7Ind, "unk7"),
+                    new (unk8, false, "unk8"),
+                };
+                break;
+
+            case ScriptRootOp.Post:
+                unk1 = PopInt(ref script);
+                unk2 = PopInt(ref script);
+                unk3 = PopInt(ref script);
+                Args = new Arg[]
+                {
+                    new(unk1, PopBool(ref script)),
+                    new(unk2, PopBool(ref script)),
+                    new(unk3, PopBool(ref script)),
+                };
+                PopByte(ref script);
+                break;
+
+            case ScriptRootOp.RandomValue:
+                target = PopInt(ref script);
+                left = PopInt(ref script);
+                right = PopInt(ref script);
+                Args = new Arg[]
+                {
+                    new(target, false, "target"),
+                    new(left, PopBool(ref script), "left"),
+                    new(right, PopBool(ref script), "right")
+                };
                 break;
 
             default: throw new NotSupportedException($"Not supported operation: {Op}");
