@@ -20,6 +20,8 @@ internal static unsafe class SpanUtils
 
     public static ReadOnlySpan<byte> PopBytes(ref ReadOnlySpan<byte> span, int bytes)
     {
+        if (bytes < 0)
+            throw new ArgumentOutOfRangeException(nameof(bytes));
         var result = span[..bytes];
         span = span[bytes..];
         return result;
