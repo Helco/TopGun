@@ -1,9 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
-using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using static TopGun.SpanUtils;
 
 namespace TopGun;
@@ -1181,6 +1180,8 @@ public readonly struct ScriptRootInstruction
                     var compareInd = PopInt(ref script) != 0;
                     args.Add(new(compare, compareInd, "compare" + i));
                     args.Add(new(jump, false, "jump" + i));
+                    if (jump >= 0 && jump < offsetToCases + 2 + caseCount * 12)
+                        throw new InvalidDataException("CalcSwitch jumps into itself");
                 }
                 Args = args;
                 break;

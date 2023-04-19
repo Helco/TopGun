@@ -29,11 +29,23 @@ internal class Program
                 Console.WriteLine();
                 Console.WriteLine();
                 Console.WriteLine($"{Path.GetFileNameWithoutExtension(resFilePath)} - {index}");
-                //Console.WriteLine(Convert.ToHexString(scriptFull));
+                Console.WriteLine(Convert.ToHexString(scriptFull));
 
                 ReadOnlySpan<byte> script = scriptFull.AsSpan();
                 while (!script.IsEmpty)
-                    Console.WriteLine(new ScriptRootInstruction(ref script));
+                {
+                    var rootInstr = new ScriptRootInstruction(ref script);
+                    Console.WriteLine(rootInstr.ToStringWithoutData());
+                    if (rootInstr.Data.IsEmpty)
+                        continue;
+
+                    var calcScript = rootInstr.Data;
+                    while (!calcScript.IsEmpty)
+                    {
+                        Console.Write('\t');
+                        Console.WriteLine(new ScriptCalcInstruction(ref calcScript));
+                    }
+                }
             }
         }
     }
