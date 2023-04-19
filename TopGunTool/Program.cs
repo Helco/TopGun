@@ -29,7 +29,6 @@ internal class Program
                 Console.WriteLine();
                 Console.WriteLine();
                 Console.WriteLine($"{Path.GetFileNameWithoutExtension(resFilePath)} - {index}");
-                Console.WriteLine(Convert.ToHexString(scriptFull));
 
                 ReadOnlySpan<byte> script = scriptFull.AsSpan();
                 while (!script.IsEmpty)

@@ -92,6 +92,7 @@ public enum ScriptRootOp : ushort
     RunArrayOp = 217,
     Switch,
     CalcSwitch,
+    Case, // not original, is part of Switch/CalcSwitch
     SpriteSwap222 = 222,
     FreeResource = 223,
     Math224 = 224,
@@ -1146,7 +1147,7 @@ public readonly struct ScriptRootInstruction
                 var caseCount = PopUShort(ref script);
                 PopByte(ref script);
                 valueInd = PopBool(ref script);
-                PopBytes(ref script, offsetToCases - 18);
+                var caseScript = script[(offsetToCases - 18)..];
                 args = new List<Arg>(2 + caseCount * 3)
                 {
                     new(value, valueInd, "value"),
@@ -1154,9 +1155,11 @@ public readonly struct ScriptRootInstruction
                 };
                 for (int i = 0; i < caseCount; i++)
                 {
-                    var compare = PopInt(ref script);
-                    var jump = PopInt(ref script);
-                    var compareInd = PopInt(ref script) != 0;
+                    PopUShort(ref caseScript); // should always be Switch to act as noop
+                    var compare = PopInt(ref caseScript);
+                    var jump = PopInt(ref caseScript);
+                    var compareInd = PopByte(ref caseScript) != 0;
+                    PopByte(ref caseScript);
                     args.Add(new(compare, compareInd, "compare" + i));
                     args.Add(new(jump, false, "jump" + i));
                 }
@@ -1164,26 +1167,32 @@ public readonly struct ScriptRootInstruction
                 break;
 
             case ScriptRootOp.CalcSwitch:
-                PopInt(ref script);
+                var offsetToFirstBody = PopInt(ref script);
                 offsetToCases = PopInt(ref script);
                 defaultJump = PopInt(ref script);
                 caseCount = PopUShort(ref script);
-                data = PopBytes(ref script, offsetToCases - 16).ToArray();
+                data = PopBytes(ref script, offsetToFirstBody - 16).ToArray();
+                caseScript = script[(offsetToCases - offsetToFirstBody)..];
                 args = new List<Arg>(1 + caseCount * 3)
                 {
                     new(defaultJump, false, "defaultJump")
                 };
                 for (int i = 0; i < caseCount; i++)
                 {
-                    var compare = PopInt(ref script);
-                    var jump = PopInt(ref script);
-                    var compareInd = PopInt(ref script) != 0;
+                    PopUShort(ref caseScript); // should always be Switch to act as noop
+                    var compare = PopInt(ref caseScript);
+                    var jump = PopInt(ref caseScript);
+                    var compareInd = PopByte(ref caseScript) != 0;
+                    PopByte(ref caseScript);
                     args.Add(new(compare, compareInd, "compare" + i));
                     args.Add(new(jump, false, "jump" + i));
-                    if (jump >= 0 && jump < offsetToCases + 2 + caseCount * 12)
-                        throw new InvalidDataException("CalcSwitch jumps into itself");
                 }
                 Args = args;
+                break;
+
+            case ScriptRootOp.Case:
+                PopBytes(ref script, 10);
+                Args = Array.Empty<Arg>();
                 break;
 
             case ScriptRootOp.SpriteSwap222:
