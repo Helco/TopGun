@@ -106,6 +106,8 @@ public readonly struct ScriptRootInstruction
 {
     public readonly record struct Arg(int Value, bool IsIndirect, string Name="");
 
+    public int Offset { get; }
+    public int EndOffset { get; }
     public ScriptRootOp Op { get; }
     public IReadOnlyList<Arg> Args { get; }
     public string? StringArg { get; }
@@ -116,6 +118,8 @@ public readonly struct ScriptRootInstruction
     public string ToStringWithoutData()
     {
         var text = new StringBuilder();
+        text.Append(Offset.ToString("X4"));
+        text.Append(": ");
         text.Append(Op);
 
         bool firstArg = true;
@@ -156,26 +160,34 @@ public readonly struct ScriptRootInstruction
         return result;
     }
 
-    public ScriptRootInstruction(ref ReadOnlySpan<byte> script)
+    public ScriptRootInstruction(ref ReadOnlySpan<byte> script) : this(new SpanReader(script))
     {
-        Op = (ScriptRootOp)PopUShort(ref script);
+        script = script[EndOffset..];
+    }
+
+    public ScriptRootInstruction(SpanReader reader) : this(ref reader) { }
+
+    public ScriptRootInstruction(ref SpanReader reader)
+    {
+        Offset = reader.Position;
+        Op = (ScriptRootOp)reader.ReadUShort();
         data = Array.Empty<byte>();
         bool valueInd;
         switch(Op)
         {
             case ScriptRootOp.RunMessage:
-                var resIndex = PopInt(ref script);
-                var resIndexInd = PopBool(ref script);
-                var indirectArgMask = PopByte(ref script);
-                var localScopeSize = PopByte(ref script);
-                var argCount = PopByte(ref script);
+                var resIndex = reader.ReadInt();
+                var resIndexInd = reader.ReadBool();
+                var indirectArgMask = reader.ReadByte();
+                var localScopeSize = reader.ReadByte();
+                var argCount = reader.ReadByte();
                 var args = new List<Arg>(2 + argCount)
                 {
                     new(resIndex, resIndexInd, "resIndex"),
                     new(localScopeSize, false, "localScope")
                 };
                 for (int i = 0; i < argCount; i++)
-                    args.Add(new(PopInt(ref script), (indirectArgMask & (1 << i)) > 0));
+                    args.Add(new(reader.ReadInt(), (indirectArgMask & (1 << i)) > 0));
                 Args = args;
                 break;
 
@@ -188,82 +200,82 @@ public readonly struct ScriptRootInstruction
             case ScriptRootOp.SetReg:
                 Args = new Arg[]
                 {
-                    new(PopInt(ref script), PopBool(ref script))
+                    new(reader.ReadInt(), reader.ReadBool())
                 };
-                PopByte(ref script); // unused
+                reader.ReadByte(); // unused
                 break;
 
             case ScriptRootOp.CalcAngle:
-                var target = PopInt(ref script);
-                var x1 = PopInt(ref script);
-                var y1 = PopInt(ref script);
-                var x2 = PopInt(ref script);
-                var y2 = PopInt(ref script);
+                var target = reader.ReadInt();
+                var x1 = reader.ReadInt();
+                var y1 = reader.ReadInt();
+                var x2 = reader.ReadInt();
+                var y2 = reader.ReadInt();
                 Args = new Arg[]
                 {
                     new(target, false, "target"),
-                    new(x1, PopBool(ref script), "x1"),
-                    new(y1, PopBool(ref script), "y1"),
-                    new(x2, PopBool(ref script), "x2"),
-                    new(y2, PopBool(ref script), "y2")
+                    new(x1, reader.ReadBool(), "x1"),
+                    new(y1, reader.ReadBool(), "y1"),
+                    new(x2, reader.ReadBool(), "x2"),
+                    new(y2, reader.ReadBool(), "y2")
                 };
                 break;
 
             case ScriptRootOp.SpriteBreakLoops:
-                var sprite = PopInt(ref script);
-                var toggle = PopByte(ref script);
+                var sprite = reader.ReadInt();
+                var toggle = reader.ReadByte();
                 Args = new Arg[]
                 {
-                    new(sprite, PopBool(ref script), "sprite"),
+                    new(sprite, reader.ReadBool(), "sprite"),
                     new(toggle, false)
                 };
                 break;
 
             case ScriptRootOp.BrowseEvents14:
-                var rctX1 = PopInt(ref script);
-                var rctY1 = PopInt(ref script);
-                var rctX2 = PopInt(ref script);
-                var rctY2 = PopInt(ref script);
-                var unk1 = PopInt(ref script);
-                var unk2 = PopInt(ref script);
-                var unk3 = PopInt(ref script);
-                var unk4 = PopInt(ref script);
-                var unk5 = PopInt(ref script);
-                var flag = PopByte(ref script);
-                PopByte(ref script);
-                var rctFlags = PopByte(ref script);
-                PopByte(ref script);
+                var rctX1 = reader.ReadInt();
+                var rctY1 = reader.ReadInt();
+                var rctX2 = reader.ReadInt();
+                var rctY2 = reader.ReadInt();
+                var unk1 = reader.ReadInt();
+                var unk2 = reader.ReadInt();
+                var unk3 = reader.ReadInt();
+                var unk4 = reader.ReadInt();
+                var unk5 = reader.ReadInt();
+                var flag = reader.ReadByte();
+                reader.ReadByte();
+                var rctFlags = reader.ReadByte();
+                reader.ReadByte();
                 Args = new Arg[]
                 {
                     new(rctX1, (rctFlags & 1) > 0, "rctX1"),
                     new(rctY1, (rctFlags & 2) > 0, "rctY1"),
                     new(rctX2, (rctFlags & 4) > 0, "rctX2"),
                     new(rctY2, (rctFlags & 8) > 0, "rctY2"),
-                    new(unk1, PopBool(ref script)),
-                    new(unk2, PopBool(ref script)),
-                    new(unk3, PopBool(ref script)),
-                    new(unk4, PopBool(ref script)),
+                    new(unk1, reader.ReadBool()),
+                    new(unk2, reader.ReadBool()),
+                    new(unk3, reader.ReadBool()),
+                    new(unk4, reader.ReadBool()),
                     new(unk5, false),
                     new(flag, false, "flag")
                 };
                 break;
 
             case ScriptRootOp.ClickRects16:
-                unk1 = PopInt(ref script);
-                unk2 = PopInt(ref script);
-                unk3 = PopInt(ref script);
-                rctX1 = PopInt(ref script);
-                rctY1 = PopInt(ref script);
-                rctX2 = PopInt(ref script);
-                rctY2 = PopInt(ref script);
-                var flag1 = PopByte(ref script);
-                var flag2 = PopByte(ref script);
-                var flag3 = PopByte(ref script);
-                var unk1Ind = PopBool(ref script);
-                var unk2Ind = PopBool(ref script);
-                var unk3Ind = PopBool(ref script);
-                rctFlags = PopByte(ref script);
-                PopByte(ref script);
+                unk1 = reader.ReadInt();
+                unk2 = reader.ReadInt();
+                unk3 = reader.ReadInt();
+                rctX1 = reader.ReadInt();
+                rctY1 = reader.ReadInt();
+                rctX2 = reader.ReadInt();
+                rctY2 = reader.ReadInt();
+                var flag1 = reader.ReadByte();
+                var flag2 = reader.ReadByte();
+                var flag3 = reader.ReadByte();
+                var unk1Ind = reader.ReadBool();
+                var unk2Ind = reader.ReadBool();
+                var unk3Ind = reader.ReadBool();
+                rctFlags = reader.ReadByte();
+                reader.ReadByte();
                 Args = new Arg[]
                 {
                     new(unk1, unk1Ind),
@@ -280,12 +292,12 @@ public readonly struct ScriptRootInstruction
                 break;
 
             case ScriptRootOp.SpriteSetClipBox:
-                rctX1 = PopInt(ref script);
-                rctY1 = PopInt(ref script);
-                rctX2 = PopInt(ref script);
-                rctY2 = PopInt(ref script);
-                rctFlags = PopByte(ref script);
-                PopByte(ref script);
+                rctX1 = reader.ReadInt();
+                rctY1 = reader.ReadInt();
+                rctX2 = reader.ReadInt();
+                rctY2 = reader.ReadInt();
+                rctFlags = reader.ReadByte();
+                reader.ReadByte();
                 Args = new Arg[]
                 {
                     new(rctX1, (rctFlags & 1) > 0, "rctX1"),
@@ -296,31 +308,31 @@ public readonly struct ScriptRootInstruction
                 break;
 
             case ScriptRootOp.SpriteCombToBackground:
-                sprite = PopInt(ref script);
-                flag = PopByte(ref script);
+                sprite = reader.ReadInt();
+                flag = reader.ReadByte();
                 Args = new Arg[]
                 {
-                    new(sprite, PopBool(ref script), "sprite"),
+                    new(sprite, reader.ReadBool(), "sprite"),
                     new(flag, false)
                 };
                 break;
 
             case ScriptRootOp.Sub4_23:
-                unk1 = PopInt(ref script);
-                unk2 = PopInt(ref script);
-                unk3 = PopInt(ref script);
-                unk4 = PopInt(ref script);
-                unk5 = PopInt(ref script);
-                flag1 = PopByte(ref script);
-                flag2 = PopByte(ref script);
-                flag3 = PopByte(ref script);
-                var flag4 = PopByte(ref script);
-                var flag5 = PopByte(ref script);
-                var unk4Ind = PopBool(ref script); // yes wrong order. :(
-                var unk5Ind = PopBool(ref script);
-                unk3Ind = PopBool(ref script);
-                unk1Ind = PopBool(ref script);
-                unk2Ind = PopBool(ref script);
+                unk1 = reader.ReadInt();
+                unk2 = reader.ReadInt();
+                unk3 = reader.ReadInt();
+                unk4 = reader.ReadInt();
+                unk5 = reader.ReadInt();
+                flag1 = reader.ReadByte();
+                flag2 = reader.ReadByte();
+                flag3 = reader.ReadByte();
+                var flag4 = reader.ReadByte();
+                var flag5 = reader.ReadByte();
+                var unk4Ind = reader.ReadBool(); // yes wrong order. :(
+                var unk5Ind = reader.ReadBool();
+                unk3Ind = reader.ReadBool();
+                unk1Ind = reader.ReadBool();
+                unk2Ind = reader.ReadBool();
                 Args = new Arg[]
                 {
                     new(unk1, unk1Ind, "unk1"),
@@ -338,84 +350,84 @@ public readonly struct ScriptRootInstruction
 
             case ScriptRootOp.Cosine:
             case ScriptRootOp.Sine:
-                target = PopInt(ref script);
-                var value = PopInt(ref script);
+                target = reader.ReadInt();
+                var value = reader.ReadInt();
                 Args = new Arg[]
                 {
                     new(target, false, "target"),
-                    new(value, PopBool(ref script), "value")
+                    new(value, reader.ReadBool(), "value")
                 };
-                PopByte(ref script);
+                reader.ReadByte();
                 break;
 
             case ScriptRootOp.SetCursor:
                 Args = new Arg[]
                 {
-                    new(PopByte(ref script), false)
+                    new(reader.ReadByte(), false)
                 };
-                PopByte(ref script);
+                reader.ReadByte();
                 break;
 
             case ScriptRootOp.SetCursorPos:
-                var x = PopInt(ref script);
-                var y = PopInt(ref script);
+                var x = reader.ReadInt();
+                var y = reader.ReadInt();
                 Args = new Arg[]
                 {
-                    new(x, PopBool(ref script)),
-                    new(y, PopBool(ref script))
+                    new(x, reader.ReadBool()),
+                    new(y, reader.ReadBool())
                 };
                 break;
 
             case ScriptRootOp.DebugStr:
-                value = PopInt(ref script);
-                var stringId = PopInt(ref script);
+                value = reader.ReadInt();
+                var stringId = reader.ReadInt();
                 Args = new Arg[]
                 {
-                    new(stringId, PopBool(ref script), "arg"),
+                    new(stringId, reader.ReadBool(), "arg"),
                     new(value, false, "stringId")
                 };
-                PopBytes(ref script, 1);
+                reader.ReadBytes(1);
                 break;
 
             case ScriptRootOp.DeleteIniSection:
                 Args = new Arg[]
                 {
-                    new(PopInt(ref script), false, "stringId")
+                    new(reader.ReadInt(), false, "stringId")
                 };
                 break;
 
             case ScriptRootOp.CursorPos43:
-                unk1 = PopInt(ref script);
-                unk2 = PopInt(ref script);
-                unk3 = PopInt(ref script);
-                flag = PopByte(ref script);
+                unk1 = reader.ReadInt();
+                unk2 = reader.ReadInt();
+                unk3 = reader.ReadInt();
+                flag = reader.ReadByte();
                 Args = new Arg[]
                 {
-                    new(unk1, PopBool(ref script)),
-                    new(unk2, PopBool(ref script)),
-                    new(unk3, PopBool(ref script)),
+                    new(unk1, reader.ReadBool()),
+                    new(unk2, reader.ReadBool()),
+                    new(unk3, reader.ReadBool()),
                     new(flag, false, "flag"),
                 };
                 break;
 
             case ScriptRootOp.Text44:
-                unk1 = PopInt(ref script);
-                unk2 = PopInt(ref script);
-                unk3 = PopInt(ref script);
-                data = PopBytes(ref script, 6).ToArray();
+                unk1 = reader.ReadInt();
+                unk2 = reader.ReadInt();
+                unk3 = reader.ReadInt();
+                data = reader.ReadBytes(6).ToArray();
                 Args = new Arg[]
                 {
-                    new(unk1, PopBool(ref script)),
-                    new(unk2, PopBool(ref script)),
-                    new(unk3, PopBool(ref script)),
+                    new(unk1, reader.ReadBool()),
+                    new(unk2, reader.ReadBool()),
+                    new(unk3, reader.ReadBool()),
                 };
-                PopByte(ref script);
+                reader.ReadByte();
                 break;
 
             case ScriptRootOp.ChangeScene54:
-                var nameBytes = PopBytes(ref script, 256);
-                flag1 = PopByte(ref script);
-                flag2 = PopByte(ref script);
+                var nameBytes = reader.ReadBytes(256);
+                flag1 = reader.ReadByte();
+                flag2 = reader.ReadByte();
                 StringArg = Encoding.UTF8.GetString(nameBytes).TrimEnd('\0');
                 Args = new Arg[]
                 {
@@ -425,7 +437,7 @@ public readonly struct ScriptRootInstruction
                 break;
 
             case ScriptRootOp.SetTmpString:
-                StringArg = Encoding.UTF8.GetString(PopBytes(ref script, 256)).TrimEnd('\0');
+                StringArg = Encoding.UTF8.GetString(reader.ReadBytes(256)).TrimEnd('\0');
                 Args = Array.Empty<Arg>();
                 break;
 
@@ -433,7 +445,7 @@ public readonly struct ScriptRootInstruction
             case ScriptRootOp.BkgTransparent61:
             case ScriptRootOp.SetCallScriptProcs62:
             case ScriptRootOp.SetErrFile:
-                value = PopInt(ref script);
+                value = reader.ReadInt();
                 Args = new Arg[]
                 {
                     new(value, false)
@@ -441,43 +453,43 @@ public readonly struct ScriptRootInstruction
                 break;
 
             case ScriptRootOp.SpriteGetBounds:
-                sprite = PopInt(ref script);
-                var spriteInd = PopBool(ref script);
-                PopByte(ref script);
+                sprite = reader.ReadInt();
+                var spriteInd = reader.ReadBool();
+                reader.ReadByte();
                 Args = new Arg[]
                 {
                     new(sprite, spriteInd, "sprite"),
-                    new(PopInt(ref script), false),
-                    new(PopInt(ref script), false),
-                    new(PopInt(ref script), false),
-                    new(PopInt(ref script), false)
+                    new(reader.ReadInt(), false),
+                    new(reader.ReadInt(), false),
+                    new(reader.ReadInt(), false),
+                    new(reader.ReadInt(), false)
                 };
                 break;
 
             case ScriptRootOp.SpriteGetInfo:
-                sprite = PopInt(ref script);
-                spriteInd = PopBool(ref script);
-                PopByte(ref script);
+                sprite = reader.ReadInt();
+                spriteInd = reader.ReadBool();
+                reader.ReadByte();
                 Args = new Arg[]
                 {
                     new(sprite, spriteInd, "sprite"),
-                    new(PopInt(ref script), false),
-                    new(PopInt(ref script), false),
-                    new(PopInt(ref script), false),
-                    new(PopInt(ref script), false),
-                    new(PopInt(ref script), false),
-                    new(PopInt(ref script), false),
-                    new(PopInt(ref script), false),
-                    new(PopInt(ref script), false),
-                    new(PopInt(ref script), false)
+                    new(reader.ReadInt(), false),
+                    new(reader.ReadInt(), false),
+                    new(reader.ReadInt(), false),
+                    new(reader.ReadInt(), false),
+                    new(reader.ReadInt(), false),
+                    new(reader.ReadInt(), false),
+                    new(reader.ReadInt(), false),
+                    new(reader.ReadInt(), false),
+                    new(reader.ReadInt(), false)
                 };
                 break;
 
             case ScriptRootOp.GetDate:
-                var dayOfWeek = PopInt(ref script);
-                var month = PopInt(ref script);
-                var day = PopInt(ref script);
-                var year = PopInt(ref script);
+                var dayOfWeek = reader.ReadInt();
+                var month = reader.ReadInt();
+                var day = reader.ReadInt();
+                var year = reader.ReadInt();
                 Args = new Arg[]
                 {
                     new(dayOfWeek, false, "dayOfWeek"),
@@ -488,48 +500,48 @@ public readonly struct ScriptRootInstruction
                 break;
 
             case ScriptRootOp.GetLineIntersect:
-                var targetX = PopInt(ref script);
-                var targetY = PopInt(ref script);
-                x1 = PopInt(ref script);
-                y1 = PopInt(ref script);
-                x2 = PopInt(ref script);
-                y2 = PopInt(ref script);
-                var x3 = PopInt(ref script);
-                var y3 = PopInt(ref script);
-                var x4 = PopInt(ref script);
-                var y4 = PopInt(ref script);
+                var targetX = reader.ReadInt();
+                var targetY = reader.ReadInt();
+                x1 = reader.ReadInt();
+                y1 = reader.ReadInt();
+                x2 = reader.ReadInt();
+                y2 = reader.ReadInt();
+                var x3 = reader.ReadInt();
+                var y3 = reader.ReadInt();
+                var x4 = reader.ReadInt();
+                var y4 = reader.ReadInt();
                 Args = new Arg[]
                 {
                     new(targetX, false, "targetX"),
                     new(targetY, false, "targetY"),
-                    new(x1, PopBool(ref script), "x1"),
-                    new(y1, PopBool(ref script), "y1"),
-                    new(x2, PopBool(ref script), "x2"),
-                    new(y2, PopBool(ref script), "y2"),
-                    new(x3, PopBool(ref script), "x3"),
-                    new(y3, PopBool(ref script), "y3"),
-                    new(x4, PopBool(ref script), "x4"),
-                    new(y4, PopBool(ref script), "y4"),
+                    new(x1, reader.ReadBool(), "x1"),
+                    new(y1, reader.ReadBool(), "y1"),
+                    new(x2, reader.ReadBool(), "x2"),
+                    new(y2, reader.ReadBool(), "y2"),
+                    new(x3, reader.ReadBool(), "x3"),
+                    new(y3, reader.ReadBool(), "y3"),
+                    new(x4, reader.ReadBool(), "x4"),
+                    new(y4, reader.ReadBool(), "y4"),
                 };
                 break;
 
             case ScriptRootOp.SpriteGetPos:
-                sprite = PopInt(ref script);
-                spriteInd = PopBool(ref script);
-                PopByte(ref script);
+                sprite = reader.ReadInt();
+                spriteInd = reader.ReadBool();
+                reader.ReadByte();
                 Args = new Arg[]
                 {
                     new(sprite, spriteInd, "sprite"),
-                    new(PopInt(ref script), false),
-                    new(PopInt(ref script), false),
+                    new(reader.ReadInt(), false),
+                    new(reader.ReadInt(), false),
                 };
                 break;
 
             case ScriptRootOp.GetClock:
-                var hour = PopInt(ref script);
-                var minute = PopInt(ref script);
-                var second = PopInt(ref script);
-                var tenthSecond = PopInt(ref script);
+                var hour = reader.ReadInt();
+                var minute = reader.ReadInt();
+                var second = reader.ReadInt();
+                var tenthSecond = reader.ReadInt();
                 Args = new Arg[]
                 {
                     new(hour, false, "hour"),
@@ -540,18 +552,18 @@ public readonly struct ScriptRootInstruction
                 break;
 
             case ScriptRootOp.RunScriptIf:
-                var then = PopInt(ref script);
-                var @else = PopInt(ref script);
-                var hasElse = PopByte(ref script);
-                var thenInd = PopBool(ref script);
-                var elseInd = PopBool(ref script);
-                PopByte(ref script);
-                var left = PopInt(ref script);
-                var right = PopInt(ref script);
-                var condOp = PopByte(ref script);
-                var leftInd = PopBool(ref script);
-                var rightInd = PopBool(ref script);
-                PopByte(ref script);
+                var then = reader.ReadInt();
+                var @else = reader.ReadInt();
+                var hasElse = reader.ReadByte();
+                var thenInd = reader.ReadBool();
+                var elseInd = reader.ReadBool();
+                reader.ReadByte();
+                var left = reader.ReadInt();
+                var right = reader.ReadInt();
+                var condOp = reader.ReadByte();
+                var leftInd = reader.ReadBool();
+                var rightInd = reader.ReadBool();
+                reader.ReadByte();
                 Args = new Arg[]
                 {
                     new(then, thenInd, "then"),
@@ -564,13 +576,13 @@ public readonly struct ScriptRootInstruction
                 break;
 
             case ScriptRootOp.JumpIf:
-                var jumpSize = PopInt(ref script);
-                left = PopInt(ref script);
-                right = PopInt(ref script);
-                condOp = PopByte(ref script);
-                leftInd = PopBool(ref script);
-                rightInd = PopBool(ref script);
-                PopByte(ref script);
+                var jumpSize = reader.ReadInt();
+                left = reader.ReadInt();
+                right = reader.ReadInt();
+                condOp = reader.ReadByte();
+                leftInd = reader.ReadBool();
+                rightInd = reader.ReadBool();
+                reader.ReadByte();
                 Args = new Arg[]
                 {
                     new(jumpSize, false, "jumpSize"),
@@ -582,13 +594,13 @@ public readonly struct ScriptRootInstruction
 
             case ScriptRootOp.JumpIfCalc:
             case ScriptRootOp.JumpIfCalc_alt:
-                then = PopInt(ref script);
-                @else = PopInt(ref script);
+                then = reader.ReadInt();
+                @else = reader.ReadInt();
                 if (then <= 10 && @else <= 10)
                     throw new NotSupportedException("Cannot figure out size of JumpIfCalc root op");
-                else if (then <= 0) data = PopBytes(ref script, @else - 10).ToArray();
-                else if (@else <= 0) data = PopBytes(ref script, then - 10).ToArray();
-                else data = PopBytes(ref script, Math.Min(then, @else) - 10).ToArray(); // in original there is only else regarded
+                else if (then <= 0) data = reader.ReadBytes(@else - 10).ToArray();
+                else if (@else <= 0) data = reader.ReadBytes(then - 10).ToArray();
+                else data = reader.ReadBytes(Math.Min(then, @else) - 10).ToArray(); // in original there is only else regarded
                 Args = new Arg[]
                 {
                     new(then, false, "then"),
@@ -597,27 +609,27 @@ public readonly struct ScriptRootInstruction
                 break;
 
             case ScriptRootOp.RunScriptIfResLoaded:
-                resIndex = PopInt(ref script);
-                var scriptIndex = PopInt(ref script);
+                resIndex = reader.ReadInt();
+                var scriptIndex = reader.ReadInt();
                 Args = new Arg[]
                 {
-                    new(resIndex, PopBool(ref script), "resIndex"),
-                    new(scriptIndex, PopBool(ref script), "scriptIndex")
+                    new(resIndex, reader.ReadBool(), "resIndex"),
+                    new(scriptIndex, reader.ReadBool(), "scriptIndex")
                 };
                 break;
 
             case ScriptRootOp.BufferCDC_94:
-                unk1 = PopInt(ref script);
-                unk2 = PopInt(ref script);
-                unk3 = PopInt(ref script);
-                unk4 = PopInt(ref script);
-                unk5 = PopInt(ref script);
-                flag1 = PopByte(ref script);
-                flag2 = PopByte(ref script);
-                flag3 = PopByte(ref script);
-                unk1Ind = PopBool(ref script);
-                unk2Ind = PopBool(ref script);
-                unk3Ind = PopBool(ref script);
+                unk1 = reader.ReadInt();
+                unk2 = reader.ReadInt();
+                unk3 = reader.ReadInt();
+                unk4 = reader.ReadInt();
+                unk5 = reader.ReadInt();
+                flag1 = reader.ReadByte();
+                flag2 = reader.ReadByte();
+                flag3 = reader.ReadByte();
+                unk1Ind = reader.ReadBool();
+                unk2Ind = reader.ReadBool();
+                unk3Ind = reader.ReadBool();
                 Args = new Arg[]
                 {
                     new(unk1, unk1Ind, "unk1"),
@@ -632,14 +644,14 @@ public readonly struct ScriptRootInstruction
                 break;
 
             case ScriptRootOp.BufferCDC_96:
-                unk1 = PopInt(ref script);
-                unk2 = PopInt(ref script);
-                flag1 = PopByte(ref script);
-                flag2 = PopByte(ref script);
-                flag3 = PopByte(ref script);
-                unk1Ind = PopBool(ref script);
-                unk2Ind = PopBool(ref script);
-                PopByte(ref script);
+                unk1 = reader.ReadInt();
+                unk2 = reader.ReadInt();
+                flag1 = reader.ReadByte();
+                flag2 = reader.ReadByte();
+                flag3 = reader.ReadByte();
+                unk1Ind = reader.ReadBool();
+                unk2Ind = reader.ReadBool();
+                reader.ReadByte();
                 Args = new Arg[]
                 {
                     new Arg(unk1, unk1Ind, "unk1"),
@@ -651,86 +663,86 @@ public readonly struct ScriptRootInstruction
                 break;
 
             case ScriptRootOp.BufferCDC_97:
-                unk1 = PopInt(ref script);
-                unk2 = PopInt(ref script);
+                unk1 = reader.ReadInt();
+                unk2 = reader.ReadInt();
                 Args = new Arg[]
                 {
-                    new(unk1, PopBool(ref script)),
-                    new(unk2, PopBool(ref script)),
+                    new(unk1, reader.ReadBool()),
+                    new(unk2, reader.ReadBool()),
                 };
                 break;
 
             case ScriptRootOp.BufferCDC_99:
-                unk1 = PopInt(ref script);
-                unk2 = PopInt(ref script);
-                unk3 = PopInt(ref script);
-                unk4 = PopInt(ref script);
+                unk1 = reader.ReadInt();
+                unk2 = reader.ReadInt();
+                unk3 = reader.ReadInt();
+                unk4 = reader.ReadInt();
                 Args = new Arg[]
                 {
-                    new(unk1, PopBool(ref script)),
+                    new(unk1, reader.ReadBool()),
                     new(unk2, false, "out1"),
                     new(unk3, false, "out2"),
                     new(unk4, false, "out3"),
                 };
-                PopByte(ref script);
+                reader.ReadByte();
                 break;
 
             case ScriptRootOp.SetBuffer3E5_101:
                 Args = new Arg[]
                 {
-                    new(PopInt(ref script), false, "target"),
-                    new(PopInt(ref script), PopBool(ref script), "value")
+                    new(reader.ReadInt(), false, "target"),
+                    new(reader.ReadInt(), reader.ReadBool(), "value")
                 };
-                PopByte(ref script);
+                reader.ReadByte();
                 break;
 
             case ScriptRootOp.Jump:
                 Args = new Arg[]
                 {
-                    new(PopInt(ref script), false, "jumpSize")
+                    new(reader.ReadInt(), false, "jumpSize")
                 };
                 break;
 
             case ScriptRootOp.GetKeyState:
                 Args = new Arg[]
                 {
-                    new(PopInt(ref script), false, "target"),
-                    new(PopInt(ref script), PopBool(ref script), "key")
+                    new(reader.ReadInt(), false, "target"),
+                    new(reader.ReadInt(), reader.ReadBool(), "key")
                 };
-                PopByte(ref script);
+                reader.ReadByte();
                 break;
 
             case ScriptRootOp.Set1943_107:
-                unk1 = PopInt(ref script);
-                unk2 = PopInt(ref script);
+                unk1 = reader.ReadInt();
+                unk2 = reader.ReadInt();
                 Args = new Arg[]
                 {
-                    new(unk1, PopBool(ref script), "unk1"),
-                    new(unk2, PopBool(ref script), "unk2"),
-                    new(PopByte(ref script), false, "flag1"),
-                    new(PopByte(ref script), false, "flag2"),
-                    new(PopByte(ref script), false, "flag3"),
-                    new(PopByte(ref script), false, "flag4"),
-                    new(PopByte(ref script), false, "flag5"),
+                    new(unk1, reader.ReadBool(), "unk1"),
+                    new(unk2, reader.ReadBool(), "unk2"),
+                    new(reader.ReadByte(), false, "flag1"),
+                    new(reader.ReadByte(), false, "flag2"),
+                    new(reader.ReadByte(), false, "flag3"),
+                    new(reader.ReadByte(), false, "flag4"),
+                    new(reader.ReadByte(), false, "flag5"),
                 };
-                PopByte(ref script);
+                reader.ReadByte();
                 break;
 
             case ScriptRootOp.DeleteTimer:
                 Args = new Arg[]
                 {
-                    new(PopInt(ref script), PopBool(ref script))
+                    new(reader.ReadInt(), reader.ReadBool())
                 };
-                PopByte(ref script);
+                reader.ReadByte();
                 break;
 
             case ScriptRootOp.SpriteSetLevel:
-                resIndex = PopInt(ref script);
-                unk1 = PopInt(ref script);
+                resIndex = reader.ReadInt();
+                unk1 = reader.ReadInt();
                 Args = new Arg[]
                 {
-                    new(resIndex, PopBool(ref script), "resIndex"),
-                    new(unk1, PopBool(ref script), "unk1")
+                    new(resIndex, reader.ReadBool(), "resIndex"),
+                    new(unk1, reader.ReadBool(), "unk1")
                 };
                 break;
 
@@ -739,9 +751,9 @@ public readonly struct ScriptRootInstruction
             case ScriptRootOp.Set3F0B_138:
                 Args = new Arg[]
                 {
-                    new(PopInt(ref script), PopBool(ref script))
+                    new(reader.ReadInt(), reader.ReadBool())
                 };
-                PopByte(ref script);
+                reader.ReadByte();
                 break;
 
             case ScriptRootOp.LoadResource:
@@ -749,41 +761,41 @@ public readonly struct ScriptRootInstruction
             case ScriptRootOp.LoadPaletteResource:
                 Args = new Arg[]
                 {
-                    new(PopInt(ref script), PopBool(ref script))
+                    new(reader.ReadInt(), reader.ReadBool())
                 };
-                PopByte(ref script);
+                reader.ReadByte();
                 break;
 
             case ScriptRootOp.AudioMute:
             case ScriptRootOp.AudioPlayCDTrack:
                 Args = new Arg[]
                 {
-                    new(PopUShort(ref script), false)
+                    new(reader.ReadUShort(), false)
                 };
                 break;
 
             case ScriptRootOp.SpriteOffset:
-                sprite = PopInt(ref script);
-                x = PopInt(ref script);
-                y = PopInt(ref script);
+                sprite = reader.ReadInt();
+                x = reader.ReadInt();
+                y = reader.ReadInt();
                 Args = new Arg[]
                 {
-                    new(sprite, PopBool(ref script), "sprite"),
-                    new(x, PopBool(ref script), "x"),
-                    new(y, PopBool(ref script), "y")
+                    new(sprite, reader.ReadBool(), "sprite"),
+                    new(x, reader.ReadBool(), "x"),
+                    new(y, reader.ReadBool(), "y")
                 };
-                PopByte(ref script);
+                reader.ReadByte();
                 break;
 
             case ScriptRootOp.AudioPlayMidi:
-                unk1 = PopInt(ref script);
-                unk1Ind = PopBool(ref script);
-                PopByte(ref script);
-                flag1 = PopByte(ref script);
-                flag2 = PopByte(ref script);
-                flag3 = PopByte(ref script);
-                unk2Ind = PopBool(ref script);
-                unk2 = PopInt(ref script);
+                unk1 = reader.ReadInt();
+                unk1Ind = reader.ReadBool();
+                reader.ReadByte();
+                flag1 = reader.ReadByte();
+                flag2 = reader.ReadByte();
+                flag3 = reader.ReadByte();
+                unk2Ind = reader.ReadBool();
+                unk2 = reader.ReadInt();
                 Args = new Arg[]
                 {
                     new(unk1, unk1Ind, "unk1"),
@@ -795,20 +807,20 @@ public readonly struct ScriptRootInstruction
                 break;
 
             case ScriptRootOp.AudioPlayWave:
-                unk1 = PopInt(ref script);
-                unk1Ind = PopBool(ref script);
-                PopByte(ref script);
-                unk2 = PopInt(ref script);
-                unk3 = PopInt(ref script);
-                unk4 = PopInt(ref script);
-                unk5 = PopInt(ref script);
-                var unk6 = PopInt(ref script);
-                var unk7 = PopInt(ref script);
-                flag1 = PopByte(ref script);
-                flag2 = PopByte(ref script);
-                flag3 = PopByte(ref script);
-                var unk7Ind = PopBool(ref script);
-                var unk8 = PopInt(ref script);
+                unk1 = reader.ReadInt();
+                unk1Ind = reader.ReadBool();
+                reader.ReadByte();
+                unk2 = reader.ReadInt();
+                unk3 = reader.ReadInt();
+                unk4 = reader.ReadInt();
+                unk5 = reader.ReadInt();
+                var unk6 = reader.ReadInt();
+                var unk7 = reader.ReadInt();
+                flag1 = reader.ReadByte();
+                flag2 = reader.ReadByte();
+                flag3 = reader.ReadByte();
+                var unk7Ind = reader.ReadBool();
+                var unk8 = reader.ReadInt();
                 Args = new Arg[]
                 {
                     new (unk1, unk1Ind, "unk1"),
@@ -826,45 +838,45 @@ public readonly struct ScriptRootInstruction
                 break;
 
             case ScriptRootOp.Post:
-                unk1 = PopInt(ref script);
-                unk2 = PopInt(ref script);
-                unk3 = PopInt(ref script);
+                unk1 = reader.ReadInt();
+                unk2 = reader.ReadInt();
+                unk3 = reader.ReadInt();
                 Args = new Arg[]
                 {
-                    new(unk1, PopBool(ref script)),
-                    new(unk2, PopBool(ref script)),
-                    new(unk3, PopBool(ref script)),
+                    new(unk1, reader.ReadBool()),
+                    new(unk2, reader.ReadBool()),
+                    new(unk3, reader.ReadBool()),
                 };
-                PopByte(ref script);
+                reader.ReadByte();
                 break;
 
             case ScriptRootOp.RandomValue:
-                target = PopInt(ref script);
-                left = PopInt(ref script);
-                right = PopInt(ref script);
+                target = reader.ReadInt();
+                left = reader.ReadInt();
+                right = reader.ReadInt();
                 Args = new Arg[]
                 {
                     new(target, false, "target"),
-                    new(left, PopBool(ref script), "left"),
-                    new(right, PopBool(ref script), "right")
+                    new(left, reader.ReadBool(), "left"),
+                    new(right, reader.ReadBool(), "right")
                 };
                 break;
 
             case ScriptRootOp.RunRandomOf:
             case ScriptRootOp.RunNextOf:
-                var scriptCount = PopByte(ref script);
-                var except = PopByte(ref script);
-                var runArrayOp = PopByte(ref script);
-                var indFlags = PopByte(ref script);
+                var scriptCount = reader.ReadByte();
+                var except = reader.ReadByte();
+                var runArrayOp = reader.ReadByte();
+                var indFlags = reader.ReadByte();
                 if (runArrayOp != 0)
                 {
                     Args = new Arg[]
                     {
                         new(except, false, "except"),
                         new(runArrayOp, false, "runArrayOp"),
-                        new(PopInt(ref script), indFlags != 0, "arrayIndex")
+                        new(reader.ReadInt(), indFlags != 0, "arrayIndex")
                     };
-                    PopBytes(ref script, 5 * sizeof(int));
+                    reader.ReadBytes(5 * sizeof(int));
                 }
                 else
                 {
@@ -873,12 +885,12 @@ public readonly struct ScriptRootInstruction
                         new(except, false, "except"),
                         new(runArrayOp, false, "runArrayOp"),
                         new(scriptCount, false, "scriptCount"),
-                        new(PopInt(ref script), (indFlags & (1 << 0)) != 0),
-                        new(PopInt(ref script), (indFlags & (1 << 1)) != 0),
-                        new(PopInt(ref script), (indFlags & (1 << 2)) != 0),
-                        new(PopInt(ref script), (indFlags & (1 << 3)) != 0),
-                        new(PopInt(ref script), (indFlags & (1 << 4)) != 0),
-                        new(PopInt(ref script), (indFlags & (1 << 5)) != 0)
+                        new(reader.ReadInt(), (indFlags & (1 << 0)) != 0),
+                        new(reader.ReadInt(), (indFlags & (1 << 1)) != 0),
+                        new(reader.ReadInt(), (indFlags & (1 << 2)) != 0),
+                        new(reader.ReadInt(), (indFlags & (1 << 3)) != 0),
+                        new(reader.ReadInt(), (indFlags & (1 << 4)) != 0),
+                        new(reader.ReadInt(), (indFlags & (1 << 5)) != 0)
                     };
                 }
                 break;
@@ -887,31 +899,31 @@ public readonly struct ScriptRootInstruction
             case ScriptRootOp.WriteIni:
                 Args = new Arg[]
                 {
-                    new(PopInt(ref script), false, "value"),
-                    new(PopInt(ref script), false, "key"),
-                    new(PopInt(ref script), false, "topic"),
-                    new(PopByte(ref script), false, "encrypted"),
-                    new(PopByte(ref script), false, "isString"),
+                    new(reader.ReadInt(), false, "value"),
+                    new(reader.ReadInt(), false, "key"),
+                    new(reader.ReadInt(), false, "topic"),
+                    new(reader.ReadByte(), false, "encrypted"),
+                    new(reader.ReadByte(), false, "isString"),
                 };
                 break;
 
             case ScriptRootOp.Return:
             case ScriptRootOp.ComplexCalc:
                 Args = Array.Empty<Arg>();
-                data = PopBytes(ref script, PopInt(ref script) - 2 - 4).ToArray();
+                data = reader.ReadBytes(reader.ReadInt() - 2 - 4).ToArray();
                 break;
 
             case ScriptRootOp.Animate:
-                var animType = PopInt(ref script);
-                var highResIndex = PopInt(ref script);
-                var lowResIndex = PopInt(ref script);
-                var highResInd = PopBool(ref script);
-                var lowResInd = PopBool(ref script);
-                var bkgIdx = PopByte(ref script);
-                PopByte(ref script);
-                var preAnimType = PopInt(ref script);
-                var preAnimArg0 = PopInt(ref script);
-                var preAnimArg1 = PopInt(ref script);
+                var animType = reader.ReadInt();
+                var highResIndex = reader.ReadInt();
+                var lowResIndex = reader.ReadInt();
+                var highResInd = reader.ReadBool();
+                var lowResInd = reader.ReadBool();
+                var bkgIdx = reader.ReadByte();
+                reader.ReadByte();
+                var preAnimType = reader.ReadInt();
+                var preAnimArg0 = reader.ReadInt();
+                var preAnimArg1 = reader.ReadInt();
                 Args = new Arg[]
                 {
                     new(animType, false, "type"),
@@ -925,37 +937,37 @@ public readonly struct ScriptRootInstruction
                 break;
 
             case ScriptRootOp.SimpleCalc:
-                target = PopInt(ref script);
-                var opCount = PopInt(ref script);
+                target = reader.ReadInt();
+                var opCount = reader.ReadInt();
                 args = new List<Arg>(1 + opCount * 3)
                 {
                     new(target, false, "target")
                 };
                 for (int i = 0; i < opCount; i++)
                 {
-                    value = PopInt(ref script);
-                    var op = PopByte(ref script);
-                    PopByte(ref script);
-                    var negateValue = PopByte(ref script);
-                    valueInd = PopBool(ref script);
+                    value = reader.ReadInt();
+                    var op = reader.ReadByte();
+                    reader.ReadByte();
+                    var negateValue = reader.ReadByte();
+                    valueInd = reader.ReadBool();
                     args.Add(new(op, false, "op" + i));
                     args.Add(new(negateValue, false, "neg" + i));
                     args.Add(new(value, valueInd, "value" + i));
                 }
                 Args = args;
-                PopBytes(ref script, 8 * (3 - opCount));
+                reader.ReadBytes(8 * (3 - opCount));
                 break;
 
             case ScriptRootOp.SpriteChangePalette:
-                var offset = PopInt(ref script);
-                var count = PopInt(ref script);
-                var reset = PopByte(ref script);
-                var offsetInd = PopBool(ref script);
-                var countInd = PopBool(ref script);
-                var r = PopByte(ref script);
-                var g = PopByte(ref script);
-                var b = PopByte(ref script);
-                PopByte(ref script);
+                var offset = reader.ReadInt();
+                var count = reader.ReadInt();
+                var reset = reader.ReadByte();
+                var offsetInd = reader.ReadBool();
+                var countInd = reader.ReadBool();
+                var r = reader.ReadByte();
+                var g = reader.ReadByte();
+                var b = reader.ReadByte();
+                reader.ReadByte();
                 Args = new Arg[]
                 {
                     new(offset, offsetInd, "offset"),
@@ -968,10 +980,10 @@ public readonly struct ScriptRootInstruction
                 break;
 
             case ScriptRootOp.ExtractFile:
-                resIndex = PopInt(ref script);
-                target = PopInt(ref script);
-                flag = PopByte(ref script);
-                resIndexInd = PopBool(ref script);
+                resIndex = reader.ReadInt();
+                target = reader.ReadInt();
+                flag = reader.ReadByte();
+                resIndexInd = reader.ReadBool();
                 Args = new Arg[]
                 {
                     new(resIndex, resIndexInd, "resIndex"),
@@ -981,38 +993,38 @@ public readonly struct ScriptRootInstruction
                 break;
 
             case ScriptRootOp.SpriteSetPos:
-                sprite = PopInt(ref script);
-                x = PopInt(ref script);
-                y = PopInt(ref script);
+                sprite = reader.ReadInt();
+                x = reader.ReadInt();
+                y = reader.ReadInt();
                 Args = new Arg[]
                 {
-                    new(sprite, PopBool(ref script), "sprite"),
-                    new(x, PopBool(ref script), "x"),
-                    new(y, PopBool(ref script), "y")
+                    new(sprite, reader.ReadBool(), "sprite"),
+                    new(x, reader.ReadBool(), "x"),
+                    new(y, reader.ReadBool(), "y")
                 };
-                PopByte(ref script);
+                reader.ReadByte();
                 break;
 
             case ScriptRootOp.SpriteSetQueue:
-                sprite = PopInt(ref script);
-                var queue = PopInt(ref script);
-                flag = PopByte(ref script);
+                sprite = reader.ReadInt();
+                var queue = reader.ReadInt();
+                flag = reader.ReadByte();
                 Args = new Arg[]
                 {
-                    new(sprite, PopBool(ref script), "sprite"),
-                    new(queue, PopBool(ref script), "queue"),
+                    new(sprite, reader.ReadBool(), "sprite"),
+                    new(queue, reader.ReadBool(), "queue"),
                     new(flag, false, "hideSprite")
                 };
-                PopByte(ref script);
+                reader.ReadByte();
                 break;
 
             case ScriptRootOp.SetString:
-                target = PopInt(ref script);
-                stringId = PopInt(ref script);
-                PopByte(ref script);
-                var stringIdInd = PopBool(ref script);
-                var formatCount = PopByte(ref script);
-                PopBytes(ref script, 3);
+                target = reader.ReadInt();
+                stringId = reader.ReadInt();
+                reader.ReadByte();
+                var stringIdInd = reader.ReadBool();
+                var formatCount = reader.ReadByte();
+                reader.ReadBytes(3);
                 args = new List<Arg>(2 + formatCount * 2)
                 {
                     new(target, false, "target"),
@@ -1020,47 +1032,47 @@ public readonly struct ScriptRootInstruction
                 };
                 for (int i = 0; i < formatCount; i++)
                 {
-                    value = PopInt(ref script);
-                    flag = PopByte(ref script);
-                    valueInd = PopBool(ref script);
+                    value = reader.ReadInt();
+                    flag = reader.ReadByte();
+                    valueInd = reader.ReadBool();
                     args.Add(new(value, valueInd && flag != 0, "value" + i));
                     args.Add(new(flag, false, "isNumber" + i));
                 }
-                PopBytes(ref script, 6 * (6 - formatCount));
+                reader.ReadBytes(6 * (6 - formatCount));
                 Args = args;
                 break;
 
             case ScriptRootOp.SetText:
-                target = PopInt(ref script);
-                value = PopInt(ref script);
-                stringId = PopInt(ref script);
+                target = reader.ReadInt();
+                value = reader.ReadInt();
+                stringId = reader.ReadInt();
                 Args = new Arg[]
                 {
-                    new(target, PopBool(ref script), "target"),
-                    new(value, PopBool(ref script), "value"),
-                    new(stringId, PopBool(ref script), "string"),
-                    new(PopByte(ref script), false, "useValue")
+                    new(target, reader.ReadBool(), "target"),
+                    new(value, reader.ReadBool(), "value"),
+                    new(stringId, reader.ReadBool(), "string"),
+                    new(reader.ReadByte(), false, "useValue")
                 };
                 break;
 
             case ScriptRootOp.SetTextNum195:
-                target = PopInt(ref script);
-                value = PopInt(ref script);
+                target = reader.ReadInt();
+                value = reader.ReadInt();
                 Args = new Arg[]
                 {
-                    new(target, PopBool(ref script), "target"),
-                    new(value, PopBool(ref script), "value")
+                    new(target, reader.ReadBool(), "target"),
+                    new(value, reader.ReadBool(), "value")
                 };
                 break;
 
             case ScriptRootOp.SetTimer:
-                target = PopInt(ref script);
-                scriptIndex = PopInt(ref script);
-                var duration = PopInt(ref script);
-                var durationInd = PopBool(ref script);
-                var scriptIndexInd = PopBool(ref script);
-                durationInd &= PopBool(ref script);
-                var repeats = PopByte(ref script);
+                target = reader.ReadInt();
+                scriptIndex = reader.ReadInt();
+                var duration = reader.ReadInt();
+                var durationInd = reader.ReadBool();
+                var scriptIndexInd = reader.ReadBool();
+                durationInd &= reader.ReadBool();
+                var repeats = reader.ReadByte();
                 Args = new Arg[]
                 {
                     new(target, false, "target"),
@@ -1071,11 +1083,11 @@ public readonly struct ScriptRootInstruction
                 break;
 
             case ScriptRootOp.AudioSetVolume:
-                flag1 = PopByte(ref script);
-                flag2 = PopByte(ref script);
-                valueInd = PopBool(ref script);
-                PopByte(ref script);
-                value = PopInt(ref script);
+                flag1 = reader.ReadByte();
+                flag2 = reader.ReadByte();
+                valueInd = reader.ReadBool();
+                reader.ReadByte();
+                value = reader.ReadInt();
                 Args = new Arg[]
                 {
                     new(flag1, false, "flag1"),
@@ -1086,22 +1098,22 @@ public readonly struct ScriptRootInstruction
 
             case ScriptRootOp.AudioStopCD:
                 Args = Array.Empty<Arg>();
-                PopUShort(ref script);
+                reader.ReadUShort();
                 break;
 
             case ScriptRootOp.AudioStopMidi:
                 Args = new Arg[]
                 {
-                    new(PopInt(ref script), PopBool(ref script), "target")
+                    new(reader.ReadInt(), reader.ReadBool(), "target")
                 };
-                PopByte(ref script);
+                reader.ReadByte();
                 break;
 
             case ScriptRootOp.AudioStopWave:
-                target = PopInt(ref script);
-                var targetInd = PopBool(ref script);
-                PopByte(ref script);
-                value = PopInt(ref script);
+                target = reader.ReadInt();
+                var targetInd = reader.ReadBool();
+                reader.ReadByte();
+                value = reader.ReadInt();
                 Args = new Arg[]
                 {
                     new(target, targetInd, "target"),
@@ -1111,9 +1123,9 @@ public readonly struct ScriptRootInstruction
 
             case ScriptRootOp.StringCompare:
             case ScriptRootOp.StringCompareI:
-                target = PopInt(ref script);
-                left = PopInt(ref script);
-                right = PopInt(ref script);
+                target = reader.ReadInt();
+                left = reader.ReadInt();
+                right = reader.ReadInt();
                 Args = new Arg[]
                 {
                     new(target, false, "target"),
@@ -1123,13 +1135,13 @@ public readonly struct ScriptRootInstruction
                 break;
 
             case ScriptRootOp.RunArrayOp:
-                resIndex = PopInt(ref script);
-                var fallback = PopInt(ref script);
-                var indexVar = PopInt(ref script);
-                flag1 = PopByte(ref script);
-                flag2 = PopByte(ref script);
-                resIndexInd = PopBool(ref script);
-                var fallbackInd = PopBool(ref script);
+                resIndex = reader.ReadInt();
+                var fallback = reader.ReadInt();
+                var indexVar = reader.ReadInt();
+                flag1 = reader.ReadByte();
+                flag2 = reader.ReadByte();
+                resIndexInd = reader.ReadBool();
+                var fallbackInd = reader.ReadBool();
                 Args = new Arg[]
                 {
                     new(resIndex, resIndexInd, "array"),
@@ -1141,13 +1153,13 @@ public readonly struct ScriptRootInstruction
                 break;
 
             case ScriptRootOp.Switch:
-                value = PopInt(ref script);
-                var offsetToCases = PopInt(ref script);
-                var defaultJump = PopInt(ref script);
-                var caseCount = PopUShort(ref script);
-                PopByte(ref script);
-                valueInd = PopBool(ref script);
-                var caseScript = script[(offsetToCases - 18)..];
+                value = reader.ReadInt();
+                var offsetToCases = reader.ReadInt();
+                var defaultJump = reader.ReadInt();
+                var caseCount = reader.ReadUShort();
+                reader.ReadByte();
+                valueInd = reader.ReadBool();
+                var caseScript = reader.RestBuffer[(offsetToCases - 18)..];
                 args = new List<Arg>(2 + caseCount * 3)
                 {
                     new(value, valueInd, "value"),
@@ -1167,12 +1179,12 @@ public readonly struct ScriptRootInstruction
                 break;
 
             case ScriptRootOp.CalcSwitch:
-                var offsetToFirstBody = PopInt(ref script);
-                offsetToCases = PopInt(ref script);
-                defaultJump = PopInt(ref script);
-                caseCount = PopUShort(ref script);
-                data = PopBytes(ref script, offsetToFirstBody - 16).ToArray();
-                caseScript = script[(offsetToCases - offsetToFirstBody)..];
+                var offsetToFirstBody = reader.ReadInt();
+                offsetToCases = reader.ReadInt();
+                defaultJump = reader.ReadInt();
+                caseCount = reader.ReadUShort();
+                data = reader.ReadBytes(offsetToFirstBody - 16).ToArray();
+                caseScript = reader.RestBuffer[(offsetToCases - offsetToFirstBody)..];
                 args = new List<Arg>(1 + caseCount * 3)
                 {
                     new(defaultJump, false, "defaultJump")
@@ -1191,18 +1203,18 @@ public readonly struct ScriptRootInstruction
                 break;
 
             case ScriptRootOp.Case:
-                PopBytes(ref script, 10);
+                reader.ReadBytes(10);
                 Args = Array.Empty<Arg>();
                 break;
 
             case ScriptRootOp.SpriteSwap222:
-                sprite = PopInt(ref script);
-                var sprite2 = PopInt(ref script);
-                queue = PopInt(ref script);
-                flag = PopByte(ref script);
-                spriteInd = PopBool(ref script);
-                var sprite2Ind = PopBool(ref script);
-                var queueInd = PopBool(ref script);
+                sprite = reader.ReadInt();
+                var sprite2 = reader.ReadInt();
+                queue = reader.ReadInt();
+                flag = reader.ReadByte();
+                spriteInd = reader.ReadBool();
+                var sprite2Ind = reader.ReadBool();
+                var queueInd = reader.ReadBool();
                 Args = new Arg[]
                 {
                     new(sprite, spriteInd, "sprite1"),
@@ -1213,23 +1225,23 @@ public readonly struct ScriptRootInstruction
                 break;
 
             case ScriptRootOp.Math224:
-                targetX = PopInt(ref script);
-                targetY = PopInt(ref script);
-                unk1 = PopInt(ref script);
-                unk2 = PopInt(ref script);
-                unk3 = PopInt(ref script);
-                unk4 = PopInt(ref script);
-                unk5 = PopInt(ref script);
-                unk6 = PopInt(ref script);
-                unk7 = PopInt(ref script);
-                unk1Ind = PopBool(ref script);
-                unk2Ind = PopBool(ref script);
-                unk3Ind = PopBool(ref script);
-                unk4Ind = PopBool(ref script);
-                unk5Ind = PopBool(ref script);
-                var unk6Ind = PopBool(ref script);
-                unk7Ind = PopBool(ref script);
-                PopByte(ref script);
+                targetX = reader.ReadInt();
+                targetY = reader.ReadInt();
+                unk1 = reader.ReadInt();
+                unk2 = reader.ReadInt();
+                unk3 = reader.ReadInt();
+                unk4 = reader.ReadInt();
+                unk5 = reader.ReadInt();
+                unk6 = reader.ReadInt();
+                unk7 = reader.ReadInt();
+                unk1Ind = reader.ReadBool();
+                unk2Ind = reader.ReadBool();
+                unk3Ind = reader.ReadBool();
+                unk4Ind = reader.ReadBool();
+                unk5Ind = reader.ReadBool();
+                var unk6Ind = reader.ReadBool();
+                unk7Ind = reader.ReadBool();
+                reader.ReadByte();
                 Args = new Arg[]
                 {
                     new(targetX, false, "targetX"),
@@ -1247,26 +1259,27 @@ public readonly struct ScriptRootInstruction
             case ScriptRootOp.SpriteIsVisible:
                 Args = new Arg[]
                 {
-                    new(PopInt(ref script), false, "target"),
-                    new(PopInt(ref script), PopBool(ref script), "sprite")
+                    new(reader.ReadInt(), false, "target"),
+                    new(reader.ReadInt(), reader.ReadBool(), "sprite")
                 };
-                PopByte(ref script);
+                reader.ReadByte();
                 break;
 
             case ScriptRootOp.SetMapTransform:
-                var zoom = PopInt(ref script);
-                var offsetX = PopInt(ref script);
-                var offsetY = PopInt(ref script);
+                var zoom = reader.ReadInt();
+                var offsetX = reader.ReadInt();
+                var offsetY = reader.ReadInt();
                 Args = new Arg[]
                 {
-                    new(zoom, PopBool(ref script), "zoom"),
-                    new(offsetX, PopBool(ref script), "offsetX"),
-                    new(offsetY, PopBool(ref script), "offsetY")
+                    new(zoom, reader.ReadBool(), "zoom"),
+                    new(offsetX, reader.ReadBool(), "offsetX"),
+                    new(offsetY, reader.ReadBool(), "offsetY")
                 };
-                PopByte(ref script);
+                reader.ReadByte();
                 break;
 
             default: throw new NotSupportedException($"Not supported operation: {Op}");
         }
+        EndOffset = reader.Position;
     }
 }

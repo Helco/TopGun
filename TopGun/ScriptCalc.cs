@@ -61,6 +61,8 @@ public readonly struct ScriptCalcInstruction
 
     public readonly record struct Arg(int Value, ArgType Type, string Name="");
 
+    public int Offset { get; }
+    public int EndOffset { get; }
     public ScriptCalcOp Op { get; }
     public IReadOnlyList<Arg> Args { get; }
 
@@ -100,9 +102,15 @@ public readonly struct ScriptCalcInstruction
         return text.ToString();
     }
 
-    public ScriptCalcInstruction(ref ReadOnlySpan<byte> script)
+    public ScriptCalcInstruction(ref ReadOnlySpan<byte> script) : this(new SpanReader(script))
     {
-        Op = (ScriptCalcOp)PopByte(ref script);
+        script = script[EndOffset..];
+    }
+    public ScriptCalcInstruction(SpanReader reader) : this(ref reader) { }
+    public ScriptCalcInstruction(ref SpanReader reader)
+    {
+        Offset = reader.Position;
+        Op = (ScriptCalcOp)reader.ReadByte();
         Args = Array.Empty<Arg>();
 
         switch(Op)
@@ -110,7 +118,7 @@ public readonly struct ScriptCalcInstruction
             case ScriptCalcOp.PushValue:
                 Args = new Arg[]
                 {
-                    new(PopInt(ref script), ArgType.Immediate)
+                    new(reader.ReadInt(), ArgType.Immediate)
                 };
                 break;
 
@@ -118,7 +126,7 @@ public readonly struct ScriptCalcInstruction
             case ScriptCalcOp.PushVarAddress:
                 Args = new Arg[]
                 {
-                    new(PopInt(ref script), ArgType.Variable)
+                    new(reader.ReadInt(), ArgType.Variable)
                 };
                 break;
 
@@ -159,8 +167,8 @@ public readonly struct ScriptCalcInstruction
             case ScriptCalcOp.RunScript:
                 Args = new Arg[]
                 {
-                    new(PopInt(ref script), ArgType.Immediate, "localScopeSize"),
-                    new(PopInt(ref script), ArgType.Immediate, "argCount")
+                    new(reader.ReadInt(), ArgType.Immediate, "localScopeSize"),
+                    new(reader.ReadInt(), ArgType.Immediate, "argCount")
                 };
                 break;
 
@@ -168,11 +176,13 @@ public readonly struct ScriptCalcInstruction
             case ScriptCalcOp.JumpZero:
                 Args = new Arg[]
                 {
-                    new(PopInt(ref script), ArgType.InstructionOffset)
+                    new(reader.ReadInt(), ArgType.InstructionOffset)
                 };
                 break;
 
             default: throw new NotSupportedException($"Not supported operation: {Op}");
         }
+
+        EndOffset = reader.Position;
     }
 }

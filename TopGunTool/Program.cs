@@ -22,27 +22,28 @@ internal class Program
                 continue;
 
             var resourceFile = new ResourceFile(resFilePath);
+            using var scriptOutput = new StreamWriter(resFilePath + ".scripts.txt");
             foreach (var (index, res) in resourceFile.Resources.Select((r, i) => (i, r)).Where(t => t.r.Type == ResourceType.Script))
             {
                 var scriptFull = resourceFile.ReadResource(res);
 
-                Console.WriteLine();
-                Console.WriteLine();
-                Console.WriteLine($"{Path.GetFileNameWithoutExtension(resFilePath)} - {index}");
+                scriptOutput.WriteLine();
+                scriptOutput.WriteLine();
+                scriptOutput.WriteLine($"{Path.GetFileNameWithoutExtension(resFilePath)} - {index}");
 
-                ReadOnlySpan<byte> script = scriptFull.AsSpan();
-                while (!script.IsEmpty)
+                var script = new SpanReader(scriptFull.AsSpan());
+                while (!script.EndOfSpan)
                 {
                     var rootInstr = new ScriptRootInstruction(ref script);
-                    Console.WriteLine(rootInstr.ToStringWithoutData());
+                    scriptOutput.WriteLine(rootInstr.ToStringWithoutData());
                     if (rootInstr.Data.IsEmpty)
                         continue;
 
                     var calcScript = rootInstr.Data;
-                    while (!calcScript.IsEmpty)
+                    while (!calcScript.IsEmpty) 
                     {
-                        Console.Write('\t');
-                        Console.WriteLine(new ScriptCalcInstruction(ref calcScript));
+                        scriptOutput.Write('\t');
+                        scriptOutput.WriteLine(new ScriptCalcInstruction(ref calcScript));
                     }
                 }
             }

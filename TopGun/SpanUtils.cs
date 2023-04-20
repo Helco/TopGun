@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Reflection.Metadata.Ecma335;
 using System.Runtime.InteropServices;
 
 namespace TopGun;
@@ -26,4 +27,58 @@ internal static unsafe class SpanUtils
         span = span[bytes..];
         return result;
     }
+}
+
+public unsafe ref struct SpanReader
+{
+    public readonly ReadOnlySpan<byte> totalBuffer;
+    public ReadOnlySpan<byte> RestBuffer { get; private set; }
+    private int position;
+
+    public SpanReader(ReadOnlySpan<byte> buffer)
+    {
+        totalBuffer = RestBuffer = buffer;
+        position = 0;
+    }
+
+    public bool EndOfSpan => RestBuffer.IsEmpty;
+
+    public int Position
+    {
+        get => position;
+        set
+        {
+            if (value < 0 || value > totalBuffer.Length)
+                throw new ArgumentOutOfRangeException(nameof(value));
+            position = value;
+            RestBuffer = totalBuffer[value..];
+        }
+    }
+
+    public int Size => totalBuffer.Length;
+    public int SizeLeft => RestBuffer.Length;
+
+    public T ReadStruct<T>() where T : unmanaged
+    {
+        var result = MemoryMarshal.Cast<byte, T>(RestBuffer)[0];
+        RestBuffer = RestBuffer[sizeof(T)..];
+        position += sizeof(T);
+        return result;
+    }
+
+    public ReadOnlySpan<byte> ReadBytes(int bytes)
+    {
+        if (bytes < 0)
+            throw new ArgumentOutOfRangeException(nameof(bytes));
+        var result = RestBuffer[..bytes];
+        RestBuffer = RestBuffer[bytes..];
+        position += bytes;
+        return result;
+    }
+
+    public byte ReadByte() => ReadStruct<byte>();
+    public bool ReadBool() => ReadStruct<byte>() != 0;
+    public ushort ReadUShort() => ReadStruct<ushort>();
+    public uint ReadUInt() => ReadStruct<uint>();
+    public int ReadInt() => ReadStruct<int>();
 }
