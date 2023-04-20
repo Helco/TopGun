@@ -210,6 +210,7 @@ public unsafe class ResourceFile
     public IReadOnlyList<Rgba32> Palette { get; }
     public IReadOnlyList<string> NameTable { get; }
     public IReadOnlyList<Plugin> Plugins { get; }
+    public IReadOnlyList<(Plugin plugin, int localProcIdx)> PluginProcs { get; }
     public string SourceFile { get; }
     public byte[] UnknownKeyResource8 { get; }
     public byte[] UnknownKeyResource9 { get; }
@@ -262,6 +263,12 @@ public unsafe class ResourceFile
         UnknownKeyResource13 = ReadUnknown(stream, keyResources[(int)KeyResourceID.Unknown13]);
 
         extensionBasePath = Path.Join(Path.GetDirectoryName(path), Path.GetFileNameWithoutExtension(path));
+
+        PluginProcs = Plugins
+            .SelectMany(p => Enumerable
+                .Range(0, p.Procs.Count)
+                .Select(i => (p, i)))
+            .ToArray();
     }
 
     private (string title, string subTitle) ExtractTitles(in MetaHeader meta)

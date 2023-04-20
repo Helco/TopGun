@@ -1,5 +1,6 @@
 ﻿using System;
-using System.Reflection.Metadata.Ecma335;
+using System.Collections;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 namespace TopGun;
@@ -26,6 +27,15 @@ internal static unsafe class SpanUtils
         var result = span[..bytes];
         span = span[bytes..];
         return result;
+    }
+
+    public static T RemoveLast<T>(this IList<T> list)
+    {
+        if (list.Count == 0)
+            throw new ArgumentException("Given list is empty", nameof(list));
+        var element = list[list.Count - 1];
+        list.RemoveAt(list.Count - 1);
+        return element;
     }
 }
 

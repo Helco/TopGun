@@ -10,8 +10,34 @@ namespace TopGunTool;
 
 internal class Program
 {
-    static void Main(string[] args) => MainPrintScripts(args);
+    static void Main(string[] args) => MainDecompileScripts(args);
 
+    static void MainDecompileScripts(string[] args)
+    {
+        var allPaths = Directory.GetFiles(@"C:\dev\TopGun\games", "*.bin", SearchOption.AllDirectories);
+        var allResFiles = new List<ResourceFile>();
+        foreach (var resFilePath in allPaths)
+        {
+            if (!resFilePath.Contains("tama"))
+                continue;
+
+            var resourceFile = new ResourceFile(resFilePath);
+            using var scriptOutput = new StreamWriter(resFilePath + ".scripts.txt");
+            //var scriptOutput = Console.Out;
+            foreach (var (index, res) in resourceFile.Resources.Select((r, i) => (i, r)).Where(t => t.r.Type == ResourceType.Script))
+            {
+                var scriptFull = resourceFile.ReadResource(res);
+
+                scriptOutput.WriteLine();
+                scriptOutput.WriteLine();
+                scriptOutput.WriteLine($"{Path.GetFileNameWithoutExtension(resFilePath)} - {index}");
+
+                var decompiler = new ScriptDecompiler(scriptFull, resourceFile);
+                decompiler.Decompile(scriptOutput);
+            }
+        }
+    }
+    
     static void MainPrintScripts(string[] args)
     {
         var allPaths = Directory.GetFiles(@"C:\dev\TopGun\games", "*.bin", SearchOption.AllDirectories);
