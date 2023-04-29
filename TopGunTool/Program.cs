@@ -10,7 +10,42 @@ namespace TopGunTool;
 
 internal class Program
 {
-    static void Main(string[] args) => MainDecompileScripts(args);
+    static void Main(string[] args) => MainPrintQueues(args);
+
+    static void MainPrintQueues(string[] args)
+    {
+        var allPaths = Directory.GetFiles(@"C:\dev\TopGun\games", "*.bin", SearchOption.AllDirectories);
+        var allResFiles = new List<ResourceFile>();
+        foreach (var resFilePath in allPaths)
+        {
+            if (!resFilePath.Contains("tama"))
+                continue;
+
+            var resourceFile = new ResourceFile(resFilePath);
+            using var queueOutput = new StreamWriter(resFilePath + ".queues.txt");
+            //var queueOutput = Console.Out;
+            foreach (var (index, res) in resourceFile.Resources.Select((r, i) => (i, r)).Where(t => t.r.Type == ResourceType.Queue))
+            {
+                var queueFull = resourceFile.ReadResource(res);
+
+                queueOutput.WriteLine();
+                queueOutput.WriteLine();
+                queueOutput.WriteLine($"{Path.GetFileNameWithoutExtension(resFilePath)} - {index}");
+
+                var queueReader = new SpanReader(queueFull.AsSpan());
+                while (!queueReader.EndOfSpan)
+                {
+                    var msg = new SpriteMessage(ref queueReader);
+                    queueOutput.WriteLine(msg.ToStringWithoutData());
+                    if (!msg.Data.IsEmpty)
+                    {
+                        var decompiler = new ScriptDecompiler(msg.Data, resourceFile);
+                        decompiler.Decompile(queueOutput, 1);
+                    }
+                }
+            }
+        }
+    }
 
     static void MainDecompileScripts(string[] args)
     {

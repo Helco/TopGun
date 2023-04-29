@@ -20,12 +20,13 @@ public partial class ScriptDecompiler
         globalVarCount = 5118;
     }
 
-    public void Decompile(TextWriter writer)
+    public void Decompile(TextWriter writer, int indent = 0)
     {
         var reader = new SpanReader(script);
         while (!reader.EndOfSpan)
         {
             var rootInstruction = new ScriptRootInstruction(ref reader);
+            WriteIndent(writer, indent);
             writer.Write(rootInstruction.ToStringWithoutData());
 
             if (rootInstruction.Op == ScriptRootOp.ComplexCalc)
@@ -33,11 +34,13 @@ public partial class ScriptDecompiler
                 writer.WriteLine();
                 while (rootInstruction.Op == ScriptRootOp.ComplexCalc)
                 {
-                    DecompileCalc(writer, rootInstruction.Data);
+                    DecompileCalc(writer, rootInstruction.Data, indent + 1);
                     if (reader.EndOfSpan)
                         return;
                     rootInstruction = new ScriptRootInstruction(ref reader);
                 }
+
+                WriteIndent(writer, indent);
                 writer.Write(rootInstruction.ToStringWithoutData());
             }
 
@@ -47,17 +50,23 @@ public partial class ScriptDecompiler
                 continue;
             }
 
-            writer.WriteLine(" {");
-            DecompileCalc(writer, rootInstruction.Data);
+            WriteIndent(writer, indent);
+            writer.WriteLine("{");
+            DecompileCalc(writer, rootInstruction.Data, indent + 1);
+            WriteIndent(writer, indent);
             writer.WriteLine("}");
         }
     }
 
-    private void DecompileCalc(TextWriter writer, ReadOnlySpan<byte> data)
+    private void DecompileCalc(TextWriter writer, ReadOnlySpan<byte> data, int indent)
     {
+        //var reader = new SpanReader(data);
+        //while (!reader.EndOfSpan)
+            //writer.WriteLine(new ScriptCalcInstruction(ref reader));
+
         var instructions = DecompileCalc(data);
         foreach (var instruction in instructions)
-            instruction.WriteTo(writer, 1);
+            instruction.WriteTo(writer, indent);
     }
 
     private IReadOnlyList<ASTInstruction> DecompileCalc(ReadOnlySpan<byte> calcScript)

@@ -31,14 +31,14 @@ partial class ScriptDecompiler
         public void WriteTo(TextWriter writer, int indent) => RefExpression.WriteTo(writer, indent);
     }
 
+    private static void WriteIndent(TextWriter writer, int indent)
+    {
+        while (indent-- > 0)
+            writer.Write('\t');
+    }
+
     private abstract class ASTNode
     {
-        protected void WriteIndent(TextWriter writer, int indent)
-        {
-            while (indent-- > 0)
-                writer.Write('\t');
-        }
-
         public abstract void WriteTo(TextWriter writer, int indent);
     }
 
