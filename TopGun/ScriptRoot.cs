@@ -594,8 +594,8 @@ public readonly struct ScriptRootInstruction
 
             case ScriptRootOp.JumpIfCalc:
             case ScriptRootOp.JumpIfCalc_alt:
-                then = reader.ReadInt();
                 @else = reader.ReadInt();
+                then = reader.ReadInt();
                 if (then <= 10 && @else <= 10)
                     throw new NotSupportedException("Cannot figure out size of JumpIfCalc root op");
                 else if (then <= 0) data = reader.ReadBytes(@else - 10).ToArray();
