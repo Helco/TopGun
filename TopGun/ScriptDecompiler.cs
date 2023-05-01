@@ -29,7 +29,7 @@ public partial class ScriptDecompiler
             WriteIndent(writer, indent);
             writer.Write(rootInstruction.ToStringWithoutData());
 
-            if (rootInstruction.Op == ScriptRootOp.ComplexCalc)
+            if (rootInstruction.Op == ScriptRootOp.ComplexCalc && false)
             {
                 writer.WriteLine();
                 while (rootInstruction.Op == ScriptRootOp.ComplexCalc)
