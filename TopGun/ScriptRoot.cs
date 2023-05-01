@@ -104,7 +104,20 @@ public enum ScriptRootOp : ushort
 
 public readonly struct ScriptRootInstruction
 {
-    public readonly record struct Arg(int Value, bool IsIndirect, string Name="");
+    public enum ArgType
+    {
+        Value,
+        Indirect,
+        InstructionOffset
+    }
+
+    public readonly record struct Arg(int Value, ArgType Type, string Name="")
+    {
+        public Arg(int Value, bool IsIndirect, string Name = "") :
+            this(Value, IsIndirect ? ArgType.Indirect : ArgType.Value, Name)
+        {
+        }
+    }
 
     public int Offset { get; }
     public int EndOffset { get; }
@@ -118,7 +131,7 @@ public readonly struct ScriptRootInstruction
     public string ToStringWithoutData()
     {
         var text = new StringBuilder();
-        text.Append(Offset.ToString("X4"));
+        text.Append(Offset.ToString("D4"));
         text.Append(": ");
         text.Append(Op);
 
@@ -137,10 +150,23 @@ public readonly struct ScriptRootInstruction
                 text.Append(": ");
             }
 
-            text.Append(arg.IsIndirect ? '[' : '#');
-            text.Append(arg.Value);
-            if (arg.IsIndirect)
-                text.Append(']');
+            switch(arg.Type)
+            {
+                case ArgType.Value:
+                    text.Append('#');
+                    text.Append(arg.Value); 
+                    break;
+                case ArgType.Indirect:
+                    text.Append('[');
+                    text.Append(arg.Value);
+                    text.Append(']');
+                    break;
+                case ArgType.InstructionOffset:
+                    text.Append('$');
+                    text.Append((Offset + arg.Value).ToString("D4"));
+                    break;
+                default: throw new NotImplementedException();
+            }
         }
 
         if (StringArg != null)
@@ -585,7 +611,7 @@ public readonly struct ScriptRootInstruction
                 reader.ReadByte();
                 Args = new Arg[]
                 {
-                    new(jumpSize, false, "jumpSize"),
+                    new(jumpSize, ArgType.InstructionOffset, "jumpSize"),
                     new(left, leftInd, "left"),
                     new(right, rightInd, "right"),
                     new(condOp, false, "condOp")
@@ -603,8 +629,8 @@ public readonly struct ScriptRootInstruction
                 else data = reader.ReadBytes(Math.Min(then, @else) - 10).ToArray(); // in original there is only else regarded
                 Args = new Arg[]
                 {
-                    new(then, false, "then"),
-                    new(@else, false, "else")
+                    new(then, ArgType.InstructionOffset, "then"),
+                    new(@else, ArgType.InstructionOffset, "else")
                 };
                 break;
 
@@ -699,7 +725,7 @@ public readonly struct ScriptRootInstruction
             case ScriptRootOp.Jump:
                 Args = new Arg[]
                 {
-                    new(reader.ReadInt(), false, "jumpSize")
+                    new(reader.ReadInt(), ArgType.InstructionOffset, "jumpSize")
                 };
                 break;
 
@@ -1173,7 +1199,7 @@ public readonly struct ScriptRootInstruction
                     var compareInd = PopByte(ref caseScript) != 0;
                     PopByte(ref caseScript);
                     args.Add(new(compare, compareInd, "compare" + i));
-                    args.Add(new(jump, false, "jump" + i));
+                    args.Add(new(jump, ArgType.InstructionOffset, "jump" + i));
                 }
                 Args = args;
                 break;
@@ -1197,7 +1223,7 @@ public readonly struct ScriptRootInstruction
                     var compareInd = PopByte(ref caseScript) != 0;
                     PopByte(ref caseScript);
                     args.Add(new(compare, compareInd, "compare" + i));
-                    args.Add(new(jump, false, "jump" + i));
+                    args.Add(new(jump, ArgType.InstructionOffset, "jump" + i));
                 }
                 Args = args;
                 break;

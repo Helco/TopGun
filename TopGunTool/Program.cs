@@ -10,7 +10,7 @@ namespace TopGunTool;
 
 internal class Program
 {
-    static void Main(string[] args) => MainPrintQueues(args);
+    static void Main(string[] args) => MainPrintScripts(args);
 
     static void MainPrintQueues(string[] args)
     {
@@ -83,7 +83,7 @@ internal class Program
                 continue;
 
             var resourceFile = new ResourceFile(resFilePath);
-            using var scriptOutput = new StreamWriter(resFilePath + ".scripts.txt");
+            using var scriptOutput = new StreamWriter(resFilePath + ".disassembly.txt");
             foreach (var (index, res) in resourceFile.Resources.Select((r, i) => (i, r)).Where(t => t.r.Type == ResourceType.Script))
             {
                 var scriptFull = resourceFile.ReadResource(res);
