@@ -10,7 +10,7 @@ namespace TopGunTool;
 
 internal class Program
 {
-    static void Main(string[] args) => MainPrintScripts(args);
+    static void Main(string[] args) => MainConvert(args);
 
     static void MainPrintQueues(string[] args)
     {
@@ -72,7 +72,7 @@ internal class Program
             }
         }
     }
-    
+
     static void MainPrintScripts(string[] args)
     {
         var allPaths = Directory.GetFiles(@"C:\dev\TopGun\games", "*.bin", SearchOption.AllDirectories);
@@ -101,7 +101,7 @@ internal class Program
                         continue;
 
                     var calcScript = rootInstr.Data;
-                    while (!calcScript.IsEmpty) 
+                    while (!calcScript.IsEmpty)
                     {
                         scriptOutput.Write('\t');
                         scriptOutput.WriteLine(new ScriptCalcInstruction(ref calcScript));
@@ -122,6 +122,34 @@ internal class Program
         pixels.SaveAsPng(@"C:\dev\TopGun\games\tama\TAMA_out\142.png");
     }
 
+    private static Rgba32[] LowColors =
+    {
+        new Rgba32(0, 0, 0),
+        new Rgba32(128, 0, 0),
+        new Rgba32(0, 128, 0),
+        new Rgba32(128, 128, 0),
+        new Rgba32(0, 0, 128),
+        new Rgba32(128, 0, 128),
+        new Rgba32(0, 128, 128),
+        new Rgba32(192, 192, 192),
+        new Rgba32(192, 220, 192),
+        new Rgba32(166, 202, 240)
+    };
+
+    private static Rgba32[] HighColors =
+    {
+       new Rgba32(255, 251, 240),
+        new Rgba32(160, 160, 164),
+        new Rgba32(128, 128, 128),
+        new Rgba32(255, 0, 0),
+        new Rgba32(0, 255, 0),
+        new Rgba32(255, 255, 0),
+        new Rgba32(0, 0, 255),
+        new Rgba32(255, 0, 255),
+        new Rgba32(0, 255, 255),
+        new Rgba32(255, 255, 255)
+    };
+
     static void MainConvert(string[] args)
     {
         var allPaths = Directory.GetFiles(@"C:\dev\TopGun\games", "*.bin", SearchOption.AllDirectories);
@@ -140,19 +168,17 @@ internal class Program
                 foreach (var (index, res) in resourceFile.Resources.Select((r, i) => (i, r)).Where(t => t.r.Type == ResourceType.Bitmap))
                 {
                     var bitmap = new Bitmap(resourceFile.ReadResource(res));
-                    if (!bitmap.IsCompressed)
-                        continue;
                     bitmap.Expand();
                     var pixels = Image.LoadPixelData(bitmap.Data.ToArray().Select(i =>
                     {
                         if (i == 0)
                             return new Rgba32(255, 0, 255);
                         else if (i < 10)
-                            throw new InvalidDataException("Unexpected color index in bitmap");
+                            return LowColors[i+1000];
                         else if (i - 10 < resourceFile.Palette.Count)
                             return resourceFile.Palette[i - 10];
                         else
-                            throw new InvalidDataException("Unexpected color index in bitmap");
+                            return HighColors[i - 246+1000];
                     }).ToArray(), bitmap.AlignedWidth, bitmap.Height);
                     pixels.SaveAsPng(Path.Join(bitmapPath, $"{index}.png"));
                 }

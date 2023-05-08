@@ -14,11 +14,19 @@ internal static unsafe class SpanUtils
         return result;
     }
 
+    public static void PushStruct<T>(ref Span<byte> span, T value) where T : unmanaged
+    {
+        MemoryMarshal.Cast<byte, T>(span)[0] = value;
+        span = span[sizeof(T)..];
+    }
+
     public static byte PopByte(ref ReadOnlySpan<byte> span) => PopStruct<byte>(ref span);
     public static bool PopBool(ref ReadOnlySpan<byte> span) => PopStruct<byte>(ref span) != 0;
     public static ushort PopUShort(ref ReadOnlySpan<byte> span) => PopStruct<ushort>(ref span);
     public static uint PopUInt(ref ReadOnlySpan<byte> span) => PopStruct<uint>(ref span);
     public static int PopInt(ref ReadOnlySpan<byte> span) => PopStruct<int>(ref span);
+
+    public static void PushByte(ref Span<byte> span, byte value) => PushStruct(ref span, value);
 
     public static ReadOnlySpan<byte> PopBytes(ref ReadOnlySpan<byte> span, int bytes)
     {
