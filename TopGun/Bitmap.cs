@@ -149,88 +149,37 @@ public unsafe class Bitmap
         }
     }
 
-    private unsafe ref struct SymbolReader
+    private ref struct SymbolReader
     {
-        private uint bits;
-        private uint bitsForNextTime;
-        private uint bitsLeft;
-        private int nextMaskI;
+        private readonly uint bits;
         private ReadOnlySpan<byte> source;
-        private fixed ushort bitsLeftMasks[8];
+        private uint nextBits;
+        private uint bitsLeft;
 
         public SymbolReader(uint bits, ReadOnlySpan<byte> source)
         {
+            this.bits = bits;
             this.source = source;
-            this.bits = bits < 9 || bits > 12 ? 11 : bits;
-            nextMaskI = 0;
-            bitsForNextTime = 0;
+            nextBits = 0;
             bitsLeft = 0;
-            switch(bits)
-            {
-                case 9:
-                    bitsLeftMasks[0] = 0x0000;
-                    bitsLeftMasks[1] = 0x7F00;
-                    bitsLeftMasks[2] = 0x3F00;
-                    bitsLeftMasks[3] = 0x1F00;
-                    bitsLeftMasks[4] = 0x0F00;
-                    bitsLeftMasks[5] = 0x0700;
-                    bitsLeftMasks[6] = 0x0300;
-                    bitsLeftMasks[7] = 0x0100;
-                    break;
-                case 10:
-                    bitsLeftMasks[0] = 0x0000;
-                    bitsLeftMasks[1] = 0x3F00;
-                    bitsLeftMasks[2] = 0x0F00;
-                    bitsLeftMasks[3] = 0x0300;
-                    bitsLeftMasks[4] = 0x0000;
-                    bitsLeftMasks[5] = 0x3F00;
-                    bitsLeftMasks[6] = 0x0F00;
-                    bitsLeftMasks[7] = 0x0300;
-                    break;
-                case 11:
-                    bitsLeftMasks[0] = 0x0000;
-                    bitsLeftMasks[1] = 0x1F00;
-                    bitsLeftMasks[2] = 0x0300;
-                    bitsLeftMasks[3] = 0x7F00;
-                    bitsLeftMasks[4] = 0x0F00;
-                    bitsLeftMasks[5] = 0x0100;
-                    bitsLeftMasks[6] = 0x3F00;
-                    bitsLeftMasks[7] = 0x0700;
-                    break;
-                case 12:
-                    bitsLeftMasks[0] = 0x0000;
-                    bitsLeftMasks[1] = 0x0F00;
-                    bitsLeftMasks[2] = 0x0000;
-                    bitsLeftMasks[3] = 0x0F00;
-                    bitsLeftMasks[4] = 0x0000;
-                    bitsLeftMasks[5] = 0x0F00;
-                    bitsLeftMasks[6] = 0x0000;
-                    bitsLeftMasks[7] = 0x0F00;
-                    break;
-                default: throw new InvalidProgramException();
-            }
         }
 
         public ushort NextSymbol()
         {
-            uint symbol = bitsLeftMasks[nextMaskI] & (bitsForNextTime << 8);
-            nextMaskI = (nextMaskI + 1) % 8;
-            symbol |= PopByte(ref source);
-            bitsLeft += 8;
-            if (bitsLeft < bits)
+            while (bitsLeft < bits)
             {
-                symbol <<= 8;
-                symbol |= PopByte(ref source);
+                nextBits <<= 8;
+                nextBits |= PopByte(ref source);
                 bitsLeft += 8;
             }
             bitsLeft -= bits;
-            bitsForNextTime = symbol;
-            symbol >>= (int)bitsLeft;
-            return (ushort)symbol;
+            ushort result = (ushort)(nextBits >> (int)bitsLeft);
+            nextBits &= (uint)(1 << (int)bitsLeft) - 1;
+            return result;
         }
 
         public ushort EndSymbol => (ushort)((1 << (int)bits) - 1);
-        public int MaxSymbols => EndSymbol - 1;
+        public ushort MaxSymbols => (ushort)((1 << (int)bits) - 2) ;
     }
 
     private const int LZWDictionarySize = 5021;
