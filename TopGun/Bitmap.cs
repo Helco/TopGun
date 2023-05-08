@@ -179,37 +179,31 @@ public unsafe class Bitmap
         }
 
         public ushort EndSymbol => (ushort)((1 << (int)bits) - 1);
-        public ushort MaxSymbols => (ushort)((1 << (int)bits) - 2) ;
+        public ushort MaxSymbols => (ushort)((1 << (int)bits) - 1);
     }
 
-    private const int LZWDictionarySize = 5021;
+    private readonly record struct Symbol(byte data, byte length, ushort lastSymbol);
 
     private void ExpandRLEwithLZWSubPacket(int bits, ref Span<byte> dest, ReadOnlySpan<byte> source)
     {
+        var symbols = new List<Symbol>(512);
+        for (int i = 0; i < 256; i++)
+            symbols.Add(new Symbol(0, 0, 0));
         var symbolReader = new SymbolReader((uint)bits, source);
-        var symbolLengths = new byte[LZWDictionarySize];
-        var symbolDatas = new byte[LZWDictionarySize];
-        var prevDataIndices = new ushort[LZWDictionarySize];
-        var symbolCount = 256;
 
         ushort symbol = symbolReader.NextSymbol();
-        if (symbol > 255)
-            throw new InvalidDataException("First symbol cannot be greater than 255");
         PushByte(ref dest, (byte)symbol);
         ushort prevSymbol = symbol;
         byte lastData = (byte)symbol;
+        byte newLastData;
 
-        while(true)
+        while (true)
         {
             symbol = symbolReader.NextSymbol();
             if (symbol == symbolReader.EndSymbol)
                 break;
-
-            byte newLastData;
-            if (symbol < symbolCount)
-            {
+            else if (symbol < symbols.Count)
                 PushSymbolData(ref dest, symbol, out newLastData);
-            }
             else
             {
                 PushSymbolData(ref dest, prevSymbol, out newLastData);
@@ -217,33 +211,20 @@ public unsafe class Bitmap
             }
             lastData = newLastData;
 
-            if (symbolCount <= symbolReader.MaxSymbols)
-            {
-                symbolDatas[symbolCount] = lastData;
-                symbolLengths[symbolCount] = (byte)(symbolLengths[prevSymbol] + 1);
-                prevDataIndices[symbolCount] = prevSymbol;
-                symbolCount++;
-            }
+            if (symbols.Count < symbolReader.MaxSymbols)
+                symbols.Add(new(lastData, (byte)(symbols[prevSymbol].length + 1), prevSymbol));
             prevSymbol = symbol;
         }
 
         void PushSymbolData(ref Span<byte> dest, ushort symbol, out byte lastData)
         {
-            if (symbol < 256)
-            {
-                PushByte(ref dest, (byte)symbol);
-                lastData = (byte)symbol;
-                return;
-            }
-
-            var length = symbolLengths[symbol];
+            var length = symbols[symbol].length;
             for (int i = 0; i < length; i++)
             {
-                dest[length - i] = symbolDatas[symbol];
-                symbol = prevDataIndices[symbol];
+                var curSymbol = symbols[symbol];
+                dest[length - i] = curSymbol.data;
+                symbol = curSymbol.lastSymbol;
             }
-            //if (symbol > 255)
-                //throw new InvalidDataException("Last symbol in string cannot be greather than 255");
             lastData = dest[0] = (byte)symbol;
             dest = dest[(length + 1)..];
         }
