@@ -29,10 +29,10 @@ public partial class ScriptDecompiler
             WriteIndent(writer, indent);
             writer.Write(rootInstruction.ToStringWithoutData());
 
-            if (rootInstruction.Op == ScriptRootOp.ComplexCalc && false)
+            if (rootInstruction.Op == ScriptOp.RunCalc && false)
             {
                 writer.WriteLine();
-                while (rootInstruction.Op == ScriptRootOp.ComplexCalc)
+                while (rootInstruction.Op == ScriptOp.RunCalc)
                 {
                     DecompileCalc(writer, rootInstruction.Data, indent + 1);
                     if (reader.EndOfSpan)

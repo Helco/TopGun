@@ -7,7 +7,7 @@ using static TopGun.SpanUtils;
 
 namespace TopGun;
 
-public enum ScriptRootOp : ushort
+/*public enum ScriptOp : ushort
 {
     RunMessage = 1,
     Nop,
@@ -100,7 +100,7 @@ public enum ScriptRootOp : ushort
     JumpIfCalc_alt = 227, // seems to be actually duplicated
     WriteIni = 228,
     SetMapTransform = 230
-}
+}*/
 
 public readonly struct ScriptRootInstruction
 {
@@ -121,7 +121,7 @@ public readonly struct ScriptRootInstruction
 
     public int Offset { get; }
     public int EndOffset { get; }
-    public ScriptRootOp Op { get; }
+    public ScriptOp Op { get; }
     public IReadOnlyList<Arg> Args { get; }
     public string? StringArg { get; }
 
@@ -196,12 +196,12 @@ public readonly struct ScriptRootInstruction
     public ScriptRootInstruction(ref SpanReader reader)
     {
         Offset = reader.Position;
-        Op = (ScriptRootOp)reader.ReadUShort();
+        Op = (ScriptOp)reader.ReadUShort();
         data = Array.Empty<byte>();
         bool valueInd;
         switch(Op)
         {
-            case ScriptRootOp.RunMessage:
+            case ScriptOp.RunMessage:
                 var resIndex = reader.ReadInt();
                 var resIndexInd = reader.ReadBool();
                 var indirectArgMask = reader.ReadByte();
@@ -217,13 +217,13 @@ public readonly struct ScriptRootInstruction
                 Args = args;
                 break;
 
-            case ScriptRootOp.Nop:
-            case ScriptRootOp.CloseWindow57:
-            case ScriptRootOp.Exit:
-            case ScriptRootOp.BackupIni:
+            case ScriptOp.Nop:
+            case ScriptOp.ChangeSceneToTmpString:
+            case ScriptOp.Exit:
+            case ScriptOp.BackupIni:
                 Args = Array.Empty<Arg>(); break;
 
-            case ScriptRootOp.SetReg:
+            case ScriptOp.SetReg3E43:
                 Args = new Arg[]
                 {
                     new(reader.ReadInt(), reader.ReadBool())
@@ -231,7 +231,7 @@ public readonly struct ScriptRootInstruction
                 reader.ReadByte(); // unused
                 break;
 
-            case ScriptRootOp.CalcAngle:
+            case ScriptOp.CalcAngle:
                 var target = reader.ReadInt();
                 var x1 = reader.ReadInt();
                 var y1 = reader.ReadInt();
@@ -247,7 +247,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.SpriteBreakLoops:
+            case ScriptOp.SpriteBreakLoops:
                 var sprite = reader.ReadInt();
                 var toggle = reader.ReadByte();
                 Args = new Arg[]
@@ -257,7 +257,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.BrowseEvents14:
+            case ScriptOp.BrowseEvents14:
                 var rctX1 = reader.ReadInt();
                 var rctY1 = reader.ReadInt();
                 var rctX2 = reader.ReadInt();
@@ -286,7 +286,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.ClickRects16:
+            case ScriptOp.ClickRects16:
                 unk1 = reader.ReadInt();
                 unk2 = reader.ReadInt();
                 unk3 = reader.ReadInt();
@@ -317,7 +317,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.SpriteSetClipBox:
+            case ScriptOp.SpriteSetClipBox:
                 rctX1 = reader.ReadInt();
                 rctY1 = reader.ReadInt();
                 rctX2 = reader.ReadInt();
@@ -333,7 +333,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.SpriteCombToBackground:
+            case ScriptOp.SpriteCombToBackground:
                 sprite = reader.ReadInt();
                 flag = reader.ReadByte();
                 Args = new Arg[]
@@ -343,7 +343,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.Sub4_23:
+            case ScriptOp.SetHitDetectTrigger23:
                 unk1 = reader.ReadInt();
                 unk2 = reader.ReadInt();
                 unk3 = reader.ReadInt();
@@ -374,8 +374,8 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.Cosine:
-            case ScriptRootOp.Sine:
+            case ScriptOp.Cosine:
+            case ScriptOp.Sine:
                 target = reader.ReadInt();
                 var value = reader.ReadInt();
                 Args = new Arg[]
@@ -386,7 +386,7 @@ public readonly struct ScriptRootInstruction
                 reader.ReadByte();
                 break;
 
-            case ScriptRootOp.SetCursor:
+            case ScriptOp.SetCursor:
                 Args = new Arg[]
                 {
                     new(reader.ReadByte(), false)
@@ -394,7 +394,7 @@ public readonly struct ScriptRootInstruction
                 reader.ReadByte();
                 break;
 
-            case ScriptRootOp.SetCursorPos:
+            case ScriptOp.SetCursorPos28:
                 var x = reader.ReadInt();
                 var y = reader.ReadInt();
                 Args = new Arg[]
@@ -404,7 +404,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.DebugStr:
+            case ScriptOp.DebugStr:
                 value = reader.ReadInt();
                 var stringId = reader.ReadInt();
                 Args = new Arg[]
@@ -415,14 +415,14 @@ public readonly struct ScriptRootInstruction
                 reader.ReadBytes(1);
                 break;
 
-            case ScriptRootOp.DeleteIniSection:
+            case ScriptOp.DeleteIniSection:
                 Args = new Arg[]
                 {
                     new(reader.ReadInt(), false, "stringId")
                 };
                 break;
 
-            case ScriptRootOp.CursorPos43:
+            case ScriptOp.PickedSprite43:
                 unk1 = reader.ReadInt();
                 unk2 = reader.ReadInt();
                 unk3 = reader.ReadInt();
@@ -436,7 +436,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.Text44:
+            case ScriptOp.StartTextInput:
                 unk1 = reader.ReadInt();
                 unk2 = reader.ReadInt();
                 unk3 = reader.ReadInt();
@@ -450,7 +450,7 @@ public readonly struct ScriptRootInstruction
                 reader.ReadByte();
                 break;
 
-            case ScriptRootOp.ChangeScene54:
+            case ScriptOp.ChangeScene54:
                 var nameBytes = reader.ReadBytes(256);
                 flag1 = reader.ReadByte();
                 flag2 = reader.ReadByte();
@@ -462,15 +462,15 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.SetTmpString:
+            case ScriptOp.SetTmpString:
                 StringArg = Encoding.UTF8.GetString(reader.ReadBytes(256)).TrimEnd('\0');
                 Args = Array.Empty<Arg>();
                 break;
 
-            case ScriptRootOp.BkgTransparent60:
-            case ScriptRootOp.BkgTransparent61:
-            case ScriptRootOp.SetCallScriptProcs62:
-            case ScriptRootOp.SetErrFile:
+            case ScriptOp.Fade:
+            case ScriptOp.StopFade:
+            case ScriptOp.SetCallScriptProcs62:
+            case ScriptOp.SetErrFile:
                 value = reader.ReadInt();
                 Args = new Arg[]
                 {
@@ -478,7 +478,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.SpriteGetBounds:
+            case ScriptOp.SpriteGetBounds63:
                 sprite = reader.ReadInt();
                 var spriteInd = reader.ReadBool();
                 reader.ReadByte();
@@ -492,7 +492,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.SpriteGetInfo:
+            case ScriptOp.SpriteGetInfo64:
                 sprite = reader.ReadInt();
                 spriteInd = reader.ReadBool();
                 reader.ReadByte();
@@ -511,7 +511,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.GetDate:
+            case ScriptOp.GetDate:
                 var dayOfWeek = reader.ReadInt();
                 var month = reader.ReadInt();
                 var day = reader.ReadInt();
@@ -525,7 +525,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.GetLineIntersect:
+            case ScriptOp.GetLineIntersect:
                 var targetX = reader.ReadInt();
                 var targetY = reader.ReadInt();
                 x1 = reader.ReadInt();
@@ -551,7 +551,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.SpriteGetPos:
+            case ScriptOp.SpriteGetPos:
                 sprite = reader.ReadInt();
                 spriteInd = reader.ReadBool();
                 reader.ReadByte();
@@ -563,7 +563,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.GetClock:
+            case ScriptOp.GetClock:
                 var hour = reader.ReadInt();
                 var minute = reader.ReadInt();
                 var second = reader.ReadInt();
@@ -577,7 +577,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.RunScriptIf:
+            case ScriptOp.RunScriptIf:
                 var then = reader.ReadInt();
                 var @else = reader.ReadInt();
                 var hasElse = reader.ReadByte();
@@ -601,7 +601,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.JumpIf:
+            case ScriptOp.JumpIf:
                 var jumpSize = reader.ReadInt();
                 left = reader.ReadInt();
                 right = reader.ReadInt();
@@ -618,8 +618,8 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.JumpIfCalc:
-            case ScriptRootOp.JumpIfCalc_alt:
+            case ScriptOp.JumpIfCalc:
+            case ScriptOp.JumpIfCalc_dup:
                 @else = reader.ReadInt();
                 then = reader.ReadInt();
                 if (then <= 10 && @else <= 10)
@@ -634,7 +634,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.RunScriptIfResLoaded:
+            case ScriptOp.RunScriptIfResLoaded:
                 resIndex = reader.ReadInt();
                 var scriptIndex = reader.ReadInt();
                 Args = new Arg[]
@@ -644,7 +644,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.BufferCDC_94:
+            case ScriptOp.BufferCDC_94:
                 unk1 = reader.ReadInt();
                 unk2 = reader.ReadInt();
                 unk3 = reader.ReadInt();
@@ -669,7 +669,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.BufferCDC_96:
+            case ScriptOp.BufferCDC_96:
                 unk1 = reader.ReadInt();
                 unk2 = reader.ReadInt();
                 flag1 = reader.ReadByte();
@@ -688,7 +688,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.BufferCDC_97:
+            case ScriptOp.BufferCDC_97:
                 unk1 = reader.ReadInt();
                 unk2 = reader.ReadInt();
                 Args = new Arg[]
@@ -698,7 +698,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.BufferCDC_99:
+            case ScriptOp.BufferCDC_99:
                 unk1 = reader.ReadInt();
                 unk2 = reader.ReadInt();
                 unk3 = reader.ReadInt();
@@ -713,7 +713,7 @@ public readonly struct ScriptRootInstruction
                 reader.ReadByte();
                 break;
 
-            case ScriptRootOp.SetBuffer3E5_101:
+            case ScriptOp.SetBuffer3E5_101:
                 Args = new Arg[]
                 {
                     new(reader.ReadInt(), false, "target"),
@@ -722,14 +722,14 @@ public readonly struct ScriptRootInstruction
                 reader.ReadByte();
                 break;
 
-            case ScriptRootOp.Jump:
+            case ScriptOp.Jump:
                 Args = new Arg[]
                 {
                     new(reader.ReadInt(), ArgType.InstructionOffset, "jumpSize")
                 };
                 break;
 
-            case ScriptRootOp.GetKeyState:
+            case ScriptOp.GetKeyState:
                 Args = new Arg[]
                 {
                     new(reader.ReadInt(), false, "target"),
@@ -738,7 +738,7 @@ public readonly struct ScriptRootInstruction
                 reader.ReadByte();
                 break;
 
-            case ScriptRootOp.Set1943_107:
+            case ScriptOp.SetReg3EE7_107:
                 unk1 = reader.ReadInt();
                 unk2 = reader.ReadInt();
                 Args = new Arg[]
@@ -754,7 +754,7 @@ public readonly struct ScriptRootInstruction
                 reader.ReadByte();
                 break;
 
-            case ScriptRootOp.DeleteTimer:
+            case ScriptOp.DeleteTimer:
                 Args = new Arg[]
                 {
                     new(reader.ReadInt(), reader.ReadBool())
@@ -762,7 +762,7 @@ public readonly struct ScriptRootInstruction
                 reader.ReadByte();
                 break;
 
-            case ScriptRootOp.SpriteSetLevel:
+            case ScriptOp.SpriteSetLevel:
                 resIndex = reader.ReadInt();
                 unk1 = reader.ReadInt();
                 Args = new Arg[]
@@ -772,9 +772,9 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.Send4C8_116:
-            case ScriptRootOp.Set3EF7_120:
-            case ScriptRootOp.Set3F0B_138:
+            case ScriptOp.ClearTopMostSpriteNextFrame:
+            case ScriptOp.Set3EF7_120:
+            case ScriptOp.Set3F0B_138:
                 Args = new Arg[]
                 {
                     new(reader.ReadInt(), reader.ReadBool())
@@ -782,9 +782,9 @@ public readonly struct ScriptRootInstruction
                 reader.ReadByte();
                 break;
 
-            case ScriptRootOp.LoadResource:
-            case ScriptRootOp.FreeResource:
-            case ScriptRootOp.LoadPaletteResource:
+            case ScriptOp.LoadResource:
+            case ScriptOp.FreeResource:
+            case ScriptOp.LoadPaletteResource:
                 Args = new Arg[]
                 {
                     new(reader.ReadInt(), reader.ReadBool())
@@ -792,15 +792,15 @@ public readonly struct ScriptRootInstruction
                 reader.ReadByte();
                 break;
 
-            case ScriptRootOp.AudioMute:
-            case ScriptRootOp.AudioPlayCDTrack:
+            case ScriptOp.AudioMute:
+            case ScriptOp.AudioPlayCDTrack:
                 Args = new Arg[]
                 {
                     new(reader.ReadUShort(), false)
                 };
                 break;
 
-            case ScriptRootOp.SpriteOffset:
+            case ScriptOp.SpriteOffset:
                 sprite = reader.ReadInt();
                 x = reader.ReadInt();
                 y = reader.ReadInt();
@@ -813,7 +813,7 @@ public readonly struct ScriptRootInstruction
                 reader.ReadByte();
                 break;
 
-            case ScriptRootOp.AudioPlayMidi:
+            case ScriptOp.AudioPlayMidi:
                 unk1 = reader.ReadInt();
                 unk1Ind = reader.ReadBool();
                 reader.ReadByte();
@@ -832,7 +832,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.AudioPlayWave:
+            case ScriptOp.AudioPlayWave145:
                 unk1 = reader.ReadInt();
                 unk1Ind = reader.ReadBool();
                 reader.ReadByte();
@@ -863,7 +863,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.Post:
+            case ScriptOp.Post:
                 unk1 = reader.ReadInt();
                 unk2 = reader.ReadInt();
                 unk3 = reader.ReadInt();
@@ -876,7 +876,7 @@ public readonly struct ScriptRootInstruction
                 reader.ReadByte();
                 break;
 
-            case ScriptRootOp.RandomValue:
+            case ScriptOp.RandomValue:
                 target = reader.ReadInt();
                 left = reader.ReadInt();
                 right = reader.ReadInt();
@@ -888,8 +888,8 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.RunRandomOf:
-            case ScriptRootOp.RunNextOf:
+            case ScriptOp.RunRandomOf:
+            case ScriptOp.RunNextOf:
                 var scriptCount = reader.ReadByte();
                 var except = reader.ReadByte();
                 var runArrayOp = reader.ReadByte();
@@ -921,8 +921,8 @@ public readonly struct ScriptRootInstruction
                 }
                 break;
 
-            case ScriptRootOp.ReadIni:
-            case ScriptRootOp.WriteIni:
+            case ScriptOp.ReadIni:
+            case ScriptOp.WriteIni:
                 Args = new Arg[]
                 {
                     new(reader.ReadInt(), false, "value"),
@@ -933,13 +933,13 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.Return:
-            case ScriptRootOp.ComplexCalc:
+            case ScriptOp.Return:
+            case ScriptOp.RunCalc:
                 Args = Array.Empty<Arg>();
                 data = reader.ReadBytes(reader.ReadInt() - 2 - 4).ToArray();
                 break;
 
-            case ScriptRootOp.Animate:
+            case ScriptOp.Animate:
                 var animType = reader.ReadInt();
                 var highResIndex = reader.ReadInt();
                 var lowResIndex = reader.ReadInt();
@@ -962,7 +962,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.SimpleCalc:
+            case ScriptOp.SimpleCalc:
                 target = reader.ReadInt();
                 var opCount = reader.ReadInt();
                 args = new List<Arg>(1 + opCount * 3)
@@ -984,7 +984,7 @@ public readonly struct ScriptRootInstruction
                 reader.ReadBytes(8 * (3 - opCount));
                 break;
 
-            case ScriptRootOp.SpriteChangePalette:
+            case ScriptOp.SpriteChangePalette179:
                 var offset = reader.ReadInt();
                 var count = reader.ReadInt();
                 var reset = reader.ReadByte();
@@ -1005,7 +1005,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.ExtractFile:
+            case ScriptOp.ExtractFile:
                 resIndex = reader.ReadInt();
                 target = reader.ReadInt();
                 flag = reader.ReadByte();
@@ -1018,7 +1018,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.SpriteSetPos:
+            case ScriptOp.SpriteSetPos:
                 sprite = reader.ReadInt();
                 x = reader.ReadInt();
                 y = reader.ReadInt();
@@ -1031,7 +1031,7 @@ public readonly struct ScriptRootInstruction
                 reader.ReadByte();
                 break;
 
-            case ScriptRootOp.SpriteSetQueue:
+            case ScriptOp.SetQueueAndHide:
                 sprite = reader.ReadInt();
                 var queue = reader.ReadInt();
                 flag = reader.ReadByte();
@@ -1044,7 +1044,7 @@ public readonly struct ScriptRootInstruction
                 reader.ReadByte();
                 break;
 
-            case ScriptRootOp.SetString:
+            case ScriptOp.SetString:
                 target = reader.ReadInt();
                 stringId = reader.ReadInt();
                 reader.ReadByte();
@@ -1068,7 +1068,7 @@ public readonly struct ScriptRootInstruction
                 Args = args;
                 break;
 
-            case ScriptRootOp.SetText:
+            case ScriptOp.SetText:
                 target = reader.ReadInt();
                 value = reader.ReadInt();
                 stringId = reader.ReadInt();
@@ -1081,7 +1081,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.SetTextNum195:
+            case ScriptOp.SetTextNum195:
                 target = reader.ReadInt();
                 value = reader.ReadInt();
                 Args = new Arg[]
@@ -1091,7 +1091,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.SetTimer:
+            case ScriptOp.SetTimer:
                 target = reader.ReadInt();
                 scriptIndex = reader.ReadInt();
                 var duration = reader.ReadInt();
@@ -1108,7 +1108,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.AudioSetVolume:
+            case ScriptOp.AudioSetVolume:
                 flag1 = reader.ReadByte();
                 flag2 = reader.ReadByte();
                 valueInd = reader.ReadBool();
@@ -1122,12 +1122,12 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.AudioStopCD:
+            case ScriptOp.AudioStopCD:
                 Args = Array.Empty<Arg>();
                 reader.ReadUShort();
                 break;
 
-            case ScriptRootOp.AudioStopMidi:
+            case ScriptOp.AudioStopMidi:
                 Args = new Arg[]
                 {
                     new(reader.ReadInt(), reader.ReadBool(), "target")
@@ -1135,7 +1135,7 @@ public readonly struct ScriptRootInstruction
                 reader.ReadByte();
                 break;
 
-            case ScriptRootOp.AudioStopWave:
+            case ScriptOp.AudioStopWave:
                 target = reader.ReadInt();
                 var targetInd = reader.ReadBool();
                 reader.ReadByte();
@@ -1147,8 +1147,8 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.StringCompare:
-            case ScriptRootOp.StringCompareI:
+            case ScriptOp.StringCompare:
+            case ScriptOp.StringCompareI:
                 target = reader.ReadInt();
                 left = reader.ReadInt();
                 right = reader.ReadInt();
@@ -1160,7 +1160,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.RunArrayOp:
+            case ScriptOp.RunArrayOp217:
                 resIndex = reader.ReadInt();
                 var fallback = reader.ReadInt();
                 var indexVar = reader.ReadInt();
@@ -1178,7 +1178,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.Switch:
+            case ScriptOp.Switch:
                 value = reader.ReadInt();
                 var offsetToCases = reader.ReadInt();
                 var defaultJump = reader.ReadInt();
@@ -1204,7 +1204,7 @@ public readonly struct ScriptRootInstruction
                 Args = args;
                 break;
 
-            case ScriptRootOp.CalcSwitch:
+            case ScriptOp.CalcSwitch:
                 var offsetToFirstBody = reader.ReadInt();
                 offsetToCases = reader.ReadInt();
                 defaultJump = reader.ReadInt();
@@ -1228,12 +1228,12 @@ public readonly struct ScriptRootInstruction
                 Args = args;
                 break;
 
-            case ScriptRootOp.Case:
+            case ScriptOp.Case:
                 reader.ReadBytes(10);
                 Args = Array.Empty<Arg>();
                 break;
 
-            case ScriptRootOp.SpriteSwap222:
+            case ScriptOp.SpriteSwap222:
                 sprite = reader.ReadInt();
                 var sprite2 = reader.ReadInt();
                 queue = reader.ReadInt();
@@ -1250,7 +1250,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.Math224:
+            case ScriptOp.Math224:
                 targetX = reader.ReadInt();
                 targetY = reader.ReadInt();
                 unk1 = reader.ReadInt();
@@ -1282,7 +1282,7 @@ public readonly struct ScriptRootInstruction
                 };
                 break;
 
-            case ScriptRootOp.SpriteIsVisible:
+            case ScriptOp.SpriteIsVisible:
                 Args = new Arg[]
                 {
                     new(reader.ReadInt(), false, "target"),
@@ -1291,7 +1291,7 @@ public readonly struct ScriptRootInstruction
                 reader.ReadByte();
                 break;
 
-            case ScriptRootOp.SetMapTransform:
+            case ScriptOp.SetMapTransform:
                 var zoom = reader.ReadInt();
                 var offsetX = reader.ReadInt();
                 var offsetY = reader.ReadInt();

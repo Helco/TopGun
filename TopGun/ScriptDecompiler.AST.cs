@@ -377,7 +377,7 @@ partial class ScriptDecompiler
 
         public override void WriteTo(TextWriter writer, int indent)
         {
-            if (Enum.TryParse<InternalProcId>(ProcId.ToString(), out var internalProc))
+            if (Enum.TryParse<ScriptOp>(ProcId.ToString(), out var internalProc))
                 writer.Write(internalProc);
             else
             {
