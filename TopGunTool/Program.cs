@@ -10,7 +10,49 @@ namespace TopGunTool;
 
 internal class Program
 {
-    static void Main(string[] args) => MainConvert(args);
+    static void Main(string[] args) => MainPrintObjects(args);
+
+    static void MainPrintObjects(string[] args)
+    {
+        var allPaths = Directory.GetFiles(@"C:\dev\TopGun\games", "*.bin", SearchOption.AllDirectories);
+        var allResFiles = new List<ResourceFile>();
+        foreach (var resFilePath in allPaths)
+        {
+            if (!resFilePath.Contains("tama"))
+                continue;
+
+            var resourceFile = new ResourceFile(resFilePath);
+            using var objectOutput = new StreamWriter(resFilePath + ".objects.txt");
+            //var objectOutput = Console.Out;
+            foreach (var (index, res) in resourceFile.Resources.Select((r, i) => (i, r)))
+            {
+                var objectFull = resourceFile.ReadResource(res);
+                if (res.Type != ResourceType.Sprite)
+                    continue;
+
+                objectOutput.WriteLine();
+                objectOutput.WriteLine();
+                objectOutput.WriteLine($"{Path.GetFileNameWithoutExtension(resFilePath)} - {res.Type} - {index}");
+
+                switch(res.Type)
+                {
+                    case ResourceType.Sprite:
+                        var sprite = new Sprite(objectFull);
+                        objectOutput.Write(sprite.ToStringWithoutResources());
+                        objectOutput.WriteLine("Resources: ");
+                        foreach (var subResIndex in sprite.Resources)
+                        {
+                            objectOutput.Write("    - ");
+                            objectOutput.Write(subResIndex);
+                            objectOutput.Write(' ');
+                            objectOutput.WriteLine(resourceFile.Resources[(int)subResIndex].Type);
+                        }
+                        break;
+                }
+
+            }
+        }
+    }
 
     static void MainPrintQueues(string[] args)
     {
@@ -100,8 +142,8 @@ internal class Program
                     if (rootInstr.Data.IsEmpty)
                         continue;
 
-                    var calcScript = rootInstr.Data;
-                    while (!calcScript.IsEmpty)
+                    var calcScript = new SpanReader(rootInstr.Data);
+                    while (!calcScript.EndOfSpan)
                     {
                         scriptOutput.Write('\t');
                         scriptOutput.WriteLine(new ScriptCalcInstruction(ref calcScript));

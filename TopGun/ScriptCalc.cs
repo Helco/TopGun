@@ -69,6 +69,8 @@ public readonly struct ScriptCalcInstruction
     public override string ToString()
     {
         var text = new StringBuilder();
+        text.Append($"{Offset:D4}");
+        text.Append(": ");
         text.Append(Op);
 
         bool firstArg = true;
