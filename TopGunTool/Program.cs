@@ -10,7 +10,7 @@ namespace TopGunTool;
 
 internal class Program
 {
-    static void Main(string[] args) => MainPrintScripts(args);
+    static void Main(string[] args) => MainDecompileScripts(args);
 
     static void MainPrintObjects(string[] args)
     {

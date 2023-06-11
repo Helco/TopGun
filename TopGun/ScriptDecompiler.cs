@@ -147,9 +147,9 @@ public partial class ScriptDecompiler
                     if (procId.ValueExpression is ASTImmediate immProcId)
                     {
                         var procIdValue = immProcId.Value;
-                        if (procIdValue >= resFile.MaxScrMsg)
+                        if (procIdValue > resFile.MaxScrMsg)
                         {
-                            var extProcIdx = (int)(procIdValue - resFile.MaxScrMsg);
+                            var extProcIdx = (int)(procIdValue - resFile.MaxScrMsg - 1);
                             if (extProcIdx < resFile.PluginProcs.Count)
                             {
                                 var (plugin, localProcIdx) = resFile.PluginProcs[extProcIdx];
