@@ -10,7 +10,101 @@ namespace TopGunTool;
 
 internal class Program
 {
-    static void Main(string[] args) => MainDecompileScripts(args);
+    static void Main(string[] args) => MainPrintObjects(args);
+
+    private TextWriter output = null!;
+    private ResourceFile resFile = null!;
+
+    private void WriteFullResource(uint index)
+    {
+        var resource = resFile.Resources[(int)index];
+        var data = resFile.ReadResource(resource);
+        output.Write(resource.Type);
+        output.Write(" - ");
+        output.WriteLine(index);
+        switch(resource.Type)
+        {
+            case ResourceType.Cell:
+                output.Write("  - ");
+                WriteCellContent(data);
+                output.WriteLine();
+                break;
+            case ResourceType.Group:
+                var group = new Group(data);
+                WriteResourceList(group.Children);
+                break;
+            case ResourceType.Queue:
+                var queueReader = new SpanReader(data);
+                while (!queueReader.EndOfSpan)
+                {
+                    var msg = new SpriteMessage(ref queueReader);
+                    output.WriteLine(msg.ToStringWithoutData());
+                    if (!msg.Data.IsEmpty)
+                        WriteScriptContent(msg.Data);
+                }
+                break;
+            case ResourceType.Script: WriteScriptContent(data); break;
+            case ResourceType.Sprite:
+                var sprite = new Sprite(data);
+                output.Write(sprite.ToStringWithoutResources());
+                output.WriteLine("Resources: ");
+                WriteResourceList(sprite.Resources);
+                break;
+        }
+    }
+
+    private void WriteResourceList(IReadOnlyList<uint> list)
+    {
+        foreach (var index in list)
+        {
+            output.Write("    - ");
+            WriteShortResource(index);
+            output.WriteLine();
+        }
+    }
+
+    private void WriteShortResource(uint index)
+    {
+        var resource = resFile.Resources[(int)index];
+        output.Write(resource.Type);
+        output.Write(" - ");
+        output.Write(index);
+        if (resource.Type == ResourceType.Cell)
+        {
+            output.Write(" (");
+            WriteCellContent(resFile.ReadResource(resource));
+            output.Write(')');
+        }
+    }
+
+    private void WriteCellContent(ReadOnlySpan<byte> data)
+    {
+        var cell = new Cell(data);
+        WriteShortResource(cell.Bitmap);
+        output.Write(" @ ");
+        output.Write(cell.OffsetX);
+        output.Write(',');
+        output.Write(cell.OffsetY);
+    }
+
+    private void WriteScriptContent(ReadOnlySpan<byte> data)
+    {
+        var script = new SpanReader(data);
+        while (!script.EndOfSpan)
+        {
+            var rootInstr = new ScriptRootInstruction(ref script);
+            output.WriteLine(rootInstr.ToStringWithoutData());
+            if (rootInstr.Data.IsEmpty)
+                continue;
+
+            var calcScript = new SpanReader(rootInstr.Data);
+            while (!calcScript.EndOfSpan)
+            {
+                output.Write('\t');
+                output.WriteLine(new ScriptCalcInstruction(ref calcScript));
+            }
+        }
+    }
 
     static void MainPrintObjects(string[] args)
     {
@@ -24,32 +118,17 @@ internal class Program
             var resourceFile = new ResourceFile(resFilePath);
             using var objectOutput = new StreamWriter(resFilePath + ".objects.txt");
             //var objectOutput = Console.Out;
+            var writer = new Program();
+            writer.output = objectOutput;
+            writer.resFile = resourceFile;
             foreach (var (index, res) in resourceFile.Resources.Select((r, i) => (i, r)))
             {
-                var objectFull = resourceFile.ReadResource(res);
-                if (res.Type != ResourceType.Sprite)
+                if (res.Type == ResourceType.Script || res.Type == ResourceType.Queue)
                     continue;
 
                 objectOutput.WriteLine();
                 objectOutput.WriteLine();
-                objectOutput.WriteLine($"{Path.GetFileNameWithoutExtension(resFilePath)} - {res.Type} - {index}");
-
-                switch(res.Type)
-                {
-                    case ResourceType.Sprite:
-                        var sprite = new Sprite(objectFull);
-                        objectOutput.Write(sprite.ToStringWithoutResources());
-                        objectOutput.WriteLine("Resources: ");
-                        foreach (var subResIndex in sprite.Resources)
-                        {
-                            objectOutput.Write("    - ");
-                            objectOutput.Write(subResIndex);
-                            objectOutput.Write(' ');
-                            objectOutput.WriteLine(resourceFile.Resources[(int)subResIndex].Type);
-                        }
-                        break;
-                }
-
+                writer.WriteFullResource((uint)index);
             }
         }
     }
