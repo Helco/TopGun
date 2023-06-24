@@ -225,7 +225,7 @@ internal class Program
                     while (!calcScript.EndOfSpan)
                     {
                         scriptOutput.Write('\t');
-                        scriptOutput.WriteLine(new ScriptCalcInstruction(ref calcScript));
+                        scriptOutput.WriteLine(new ScriptCalcInstruction(ref calcScript, rootInstr.DataOffset));
                     }
                 }
             }

@@ -104,14 +104,14 @@ public readonly struct ScriptCalcInstruction
         return text.ToString();
     }
 
-    public ScriptCalcInstruction(ref ReadOnlySpan<byte> script) : this(new SpanReader(script))
+    public ScriptCalcInstruction(ref ReadOnlySpan<byte> script, int baseOffset = 0) : this(new SpanReader(script), baseOffset)
     {
         script = script[EndOffset..];
     }
-    public ScriptCalcInstruction(SpanReader reader) : this(ref reader) { }
-    public ScriptCalcInstruction(ref SpanReader reader)
+    public ScriptCalcInstruction(SpanReader reader, int baseOffset = 0) : this(ref reader, baseOffset) { }
+    public ScriptCalcInstruction(ref SpanReader reader, int baseOffset = 0)
     {
-        Offset = reader.Position;
+        Offset = baseOffset + reader.Position;
         Op = (ScriptCalcOp)reader.ReadByte();
         Args = Array.Empty<Arg>();
 
@@ -185,6 +185,6 @@ public readonly struct ScriptCalcInstruction
             default: throw new NotSupportedException($"Not supported operation: {Op}");
         }
 
-        EndOffset = reader.Position;
+        EndOffset = baseOffset + reader.Position;
     }
 }

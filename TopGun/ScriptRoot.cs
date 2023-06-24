@@ -25,6 +25,7 @@ public readonly struct ScriptRootInstruction
     }
 
     public int Offset { get; }
+    public int DataOffset { get; } = -1;
     public int EndOffset { get; }
     public ScriptOp Op { get; }
     public IReadOnlyList<Arg> Args { get; }
@@ -527,6 +528,7 @@ public readonly struct ScriptRootInstruction
             case ScriptOp.JumpIfCalc_dup:
                 @else = reader.ReadInt();
                 then = reader.ReadInt();
+                DataOffset = reader.Position;
                 if (then <= 10 && @else <= 10)
                     throw new NotSupportedException("Cannot figure out size of JumpIfCalc root op");
                 else if (then <= 0) data = reader.ReadBytes(@else - 10).ToArray();
@@ -841,6 +843,7 @@ public readonly struct ScriptRootInstruction
             case ScriptOp.Return:
             case ScriptOp.RunCalc:
                 Args = Array.Empty<Arg>();
+                DataOffset = reader.Position + 4;
                 data = reader.ReadBytes(reader.ReadInt() - 2 - 4).ToArray();
                 break;
 
@@ -1114,6 +1117,7 @@ public readonly struct ScriptRootInstruction
                 offsetToCases = reader.ReadInt();
                 defaultJump = reader.ReadInt();
                 caseCount = reader.ReadUShort();
+                DataOffset = reader.Position;
                 data = reader.ReadBytes(offsetToFirstBody - 16).ToArray();
                 caseScript = reader.RestBuffer[(offsetToCases - offsetToFirstBody)..];
                 args = new List<Arg>(1 + caseCount * 3)

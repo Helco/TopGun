@@ -37,8 +37,33 @@ partial class ScriptDecompiler
             writer.Write('\t');
     }
 
+    private static int StartTotalOffsetFor(ASTNode me, params ASTNode[] children) => StartTotalOffsetFor(me, children as IEnumerable<ASTNode>);
+    private static int StartTotalOffsetFor(ASTNode me, params CalcStackEntry[] children) => StartTotalOffsetFor(me, children as IEnumerable<CalcStackEntry>);
+    private static int StartTotalOffsetFor(ASTNode me, IEnumerable<CalcStackEntry> children) => StartTotalOffsetFor(me, children.Select(c => c.RefExpression));
+    private static int StartTotalOffsetFor(ASTNode me, IEnumerable<ASTNode> children) => StartTotalOffsetFor(me.StartOwnOffset, children);
+    private static int StartTotalOffsetFor(int myStart, IEnumerable<ASTNode> children)
+    {
+        var childrenStart = children.Where(c => c.StartTotalOffset >= 0).Min(c => c.StartTotalOffset);
+        return myStart >= 0 ? Math.Min(myStart, childrenStart) : childrenStart;
+    }
+
+    private static int EndTotalOffsetFor(ASTNode me, params ASTNode[] children) => EndTotalOffsetFor(me, children as IEnumerable<ASTNode>);
+    private static int EndTotalOffsetFor(ASTNode me, params CalcStackEntry[] children) => EndTotalOffsetFor(me, children as IEnumerable<CalcStackEntry>);
+    private static int EndTotalOffsetFor(ASTNode me, IEnumerable<CalcStackEntry> children) => EndTotalOffsetFor(me, children.Select(c => c.RefExpression));
+    private static int EndTotalOffsetFor(ASTNode me, IEnumerable<ASTNode> children) => EndTotalOffsetFor(me.EndOwnOffset, children);
+    private static int EndTotalOffsetFor(int myEnd, IEnumerable<ASTNode> children)
+    {
+        var childrenEnd = children.Where(c => c.EndTotalOffset >= 0).Max(c => c.EndTotalOffset);
+        return myEnd >= 0 ? Math.Max(myEnd, childrenEnd) : childrenEnd;
+    }
+
     private abstract class ASTNode
     {
+        public int StartOwnOffset { get; set; } = -1;
+        public int EndOwnOffset { get; set; } = -1;
+        public virtual int StartTotalOffset => StartOwnOffset;
+        public virtual int EndTotalOffset => EndOwnOffset;
+
         public abstract void WriteTo(TextWriter writer, int indent);
     }
 
@@ -91,6 +116,8 @@ partial class ScriptDecompiler
     {
         public int Index { get; init; }
         public ASTExpression Value { get; init; } = null!;
+        public override int StartTotalOffset => StartTotalOffsetFor(this, Value);
+        public override int EndTotalOffset => EndTotalOffsetFor(this, Value);
 
         public override void WriteTo(TextWriter writer, int indent)
         {
@@ -119,6 +146,8 @@ partial class ScriptDecompiler
     private class ASTExprInstr : ASTInstruction
     {
         public ASTExpression Expression { get; init; } = null!;
+        public override int StartTotalOffset => StartTotalOffsetFor(this, Expression);
+        public override int EndTotalOffset => EndTotalOffsetFor(this, Expression);
 
         public override void WriteTo(TextWriter writer, int indent)
         {
@@ -189,6 +218,8 @@ partial class ScriptDecompiler
         public CalcStackEntry Array { get; init; } = null!;
         public CalcStackEntry Index { get; init; } = null!;
         public override int Precedence => 50;
+        public override int StartTotalOffset => StartTotalOffsetFor(this, Array, Index);
+        public override int EndTotalOffset => EndTotalOffsetFor(this, Array, Index);
 
         public override void WriteTo(TextWriter writer, int indent)
         {
@@ -228,6 +259,8 @@ partial class ScriptDecompiler
         public UnaryOp Op { get; init; }
         public CalcStackEntry Value { get; init; } = null!;
         public override int Precedence => 20;
+        public override int StartTotalOffset => StartTotalOffsetFor(this, Value);
+        public override int EndTotalOffset => EndTotalOffsetFor(this, Value);
 
         public override void WriteTo(TextWriter writer, int indent)
         {
@@ -249,8 +282,10 @@ partial class ScriptDecompiler
         Modulo,
         ShiftLeft,
         ShiftRight,
-        BooleanAnd,
-        BooleanOr,
+        EvalBooleanAnd,
+        LazyBooleanAnd,
+        EvalBooleanOr,
+        LazyBooleanOr,
         BitAnd,
         BitOr,
         BitXor,
@@ -264,8 +299,10 @@ partial class ScriptDecompiler
     private readonly record struct BinaryOpInfo(string Name, int Precedence);
     private static readonly IReadOnlyDictionary<BinaryOp, BinaryOpInfo> binaryOpInfos = new Dictionary<BinaryOp, BinaryOpInfo>()
     {
-        { BinaryOp.BooleanOr, new("||", 0) },
-        { BinaryOp.BooleanAnd, new("&&", 1) },
+        { BinaryOp.EvalBooleanOr, new("||", 0) },
+        { BinaryOp.LazyBooleanOr, new("||?", 0) },
+        { BinaryOp.EvalBooleanAnd, new("&&", 1) },
+        { BinaryOp.LazyBooleanAnd, new("&&?", 1) },
         { BinaryOp.BitOr, new("|", 2) },
         { BinaryOp.BitXor, new("^", 3) },
         { BinaryOp.BitAnd, new("&", 4) },
@@ -290,6 +327,8 @@ partial class ScriptDecompiler
         public CalcStackEntry Left { get; init; } = null!;
         public CalcStackEntry Right { get; init; } = null!;
         public override int Precedence => binaryOpInfos[Op].Precedence;
+        public override int StartTotalOffset => StartTotalOffsetFor(this, Left, Right);
+        public override int EndTotalOffset => EndTotalOffsetFor(this, Left, Right);
 
         public override void WriteTo(TextWriter writer, int indent)
         {
@@ -305,6 +344,8 @@ partial class ScriptDecompiler
     {
         public CalcStackEntry Address { get; init; } = null!;
         public CalcStackEntry Value { get; init; } = null!;
+        public override int StartTotalOffset => StartTotalOffsetFor(this, Address, Value);
+        public override int EndTotalOffset => EndTotalOffsetFor(this, Address, Value);
 
         public override void WriteTo(TextWriter writer, int indent)
         {
@@ -321,6 +362,8 @@ partial class ScriptDecompiler
         public IReadOnlyList<CalcStackEntry> Args { get; init; } = Array.Empty<CalcStackEntry>();
         public int LocalScopeSize { get; init; }
         public override int Precedence => 50;
+        public override int StartTotalOffset => StartTotalOffsetFor(this, Args);
+        public override int EndTotalOffset => EndTotalOffsetFor(this, Args);
 
         protected void WriteArgsTo(TextWriter writer, int indent)
         {
@@ -355,6 +398,8 @@ partial class ScriptDecompiler
     private class ASTDynamicProcCall : ASTCall
     {
         public CalcStackEntry ProcId { get; init; } = null!;
+        public override int StartTotalOffset => StartTotalOffsetFor(base.StartTotalOffset, new[] { ProcId.RefExpression });
+        public override int EndTotalOffset => EndTotalOffsetFor(base.EndTotalOffset, new[] { ProcId.RefExpression });
 
         public override void WriteTo(TextWriter writer, int indent)
         {
@@ -415,6 +460,8 @@ partial class ScriptDecompiler
     private class ASTScriptCall : ASTCall
     {
         public CalcStackEntry ScriptIndex { get; init; } = null!;
+        public override int StartTotalOffset => StartTotalOffsetFor(base.StartTotalOffset, new[] { ScriptIndex.RefExpression });
+        public override int EndTotalOffset => EndTotalOffsetFor(base.EndTotalOffset, new[] { ScriptIndex.RefExpression });
 
         public override void WriteTo(TextWriter writer, int indent)
         {
@@ -430,6 +477,8 @@ partial class ScriptDecompiler
         public bool Zero { get; init; }
         public CalcStackEntry Condition { get; init; } = null!;
         public int Target { get; init; }
+        public override int StartTotalOffset => StartTotalOffsetFor(base.StartTotalOffset, new[] { Condition.RefExpression });
+        public override int EndTotalOffset => EndTotalOffsetFor(base.EndTotalOffset, new[] { Condition.RefExpression });
 
         public override void WriteTo(TextWriter writer, int indent)
         {
@@ -445,6 +494,8 @@ partial class ScriptDecompiler
     private class ASTReturn : ASTInstruction
     {
         public ASTExpression Expression { get; init; } = null!;
+        public override int StartTotalOffset => StartTotalOffsetFor(this, Expression);
+        public override int EndTotalOffset => EndTotalOffsetFor(this, Expression);
 
         public override void WriteTo(TextWriter writer, int indent)
         {
