@@ -31,36 +31,30 @@ partial class ScriptDecompiler
         public void WriteTo(CodeWriter writer) => RefExpression.WriteTo(writer);
     }
 
-    private static int StartTotalOffsetFor(ASTNode me, params ASTNode[] children) => StartTotalOffsetFor(me, children as IEnumerable<ASTNode>);
-    private static int StartTotalOffsetFor(ASTNode me, params CalcStackEntry[] children) => StartTotalOffsetFor(me, children as IEnumerable<CalcStackEntry>);
-    private static int StartTotalOffsetFor(ASTNode me, IEnumerable<CalcStackEntry> children) => StartTotalOffsetFor(me, children.Select(c => c.RefExpression));
-    private static int StartTotalOffsetFor(ASTNode me, IEnumerable<ASTNode> children) => StartTotalOffsetFor(me.StartOwnOffset, children);
-    private static int StartTotalOffsetFor(int myStart, IEnumerable<ASTNode> children)
-    {
-        if (!children.Any())
-            return myStart;
-        var childrenStart = children.Where(c => c.StartTotalOffset >= 0).Min(c => c.StartTotalOffset);
-        return myStart >= 0 ? Math.Min(myStart, childrenStart) : childrenStart;
-    }
-
-    private static int EndTotalOffsetFor(ASTNode me, params ASTNode[] children) => EndTotalOffsetFor(me, children as IEnumerable<ASTNode>);
-    private static int EndTotalOffsetFor(ASTNode me, params CalcStackEntry[] children) => EndTotalOffsetFor(me, children as IEnumerable<CalcStackEntry>);
-    private static int EndTotalOffsetFor(ASTNode me, IEnumerable<CalcStackEntry> children) => EndTotalOffsetFor(me, children.Select(c => c.RefExpression));
-    private static int EndTotalOffsetFor(ASTNode me, IEnumerable<ASTNode> children) => EndTotalOffsetFor(me.EndOwnOffset, children);
-    private static int EndTotalOffsetFor(int myEnd, IEnumerable<ASTNode> children)
-    {
-        if (!children.Any())
-            return myEnd;
-        var childrenEnd = children.Where(c => c.EndTotalOffset >= 0).Max(c => c.EndTotalOffset);
-        return myEnd >= 0 ? Math.Max(myEnd, childrenEnd) : childrenEnd;
-    }
-
     private abstract class ASTNode
     {
         public int StartOwnOffset { get; set; } = -1;
         public int EndOwnOffset { get; set; } = -1;
-        public virtual int StartTotalOffset => StartOwnOffset;
-        public virtual int EndTotalOffset => EndOwnOffset;
+        public virtual int StartTotalOffset
+        {
+            get
+            {
+                if (!Children.Any())
+                    return StartOwnOffset;
+                var childrenStart = Children.Where(c => c.StartTotalOffset >= 0).Min(c => c.StartTotalOffset);
+                return StartOwnOffset >= 0 ? Math.Min(StartOwnOffset, childrenStart) : childrenStart;
+            }
+        }
+        public virtual int EndTotalOffset
+        {
+            get
+            {
+                if (!Children.Any())
+                    return EndOwnOffset;
+                var childrenEnd = Children.Where(c => c.EndTotalOffset >= 0).Max(c => c.EndTotalOffset);
+                return EndOwnOffset >= 0 ? Math.Max(EndOwnOffset, childrenEnd) : childrenEnd;
+            }
+        }
         public TextPosition StartTextPosition { get; private set; } // only valid after WriteTo
         public TextPosition EndTextPosition { get; private set; }
         public virtual IEnumerable<ASTNode> Children => Enumerable.Empty<ASTNode>();
@@ -123,8 +117,7 @@ partial class ScriptDecompiler
     {
         public int Index { get; init; }
         public ASTExpression Value { get; init; } = null!;
-        public override int StartTotalOffset => StartTotalOffsetFor(this, Value);
-        public override int EndTotalOffset => EndTotalOffsetFor(this, Value);
+        public override IEnumerable<ASTNode> Children => new[] { Value };
 
         protected override void WriteToInternal(CodeWriter writer)
         {
@@ -152,8 +145,7 @@ partial class ScriptDecompiler
     private class ASTExprInstr : ASTInstruction
     {
         public ASTExpression Expression { get; init; } = null!;
-        public override int StartTotalOffset => StartTotalOffsetFor(this, Expression);
-        public override int EndTotalOffset => EndTotalOffsetFor(this, Expression);
+        public override IEnumerable<ASTNode> Children => new[] { Expression };
 
         protected override void WriteToInternal(CodeWriter writer)
         {
@@ -223,8 +215,7 @@ partial class ScriptDecompiler
         public CalcStackEntry Array { get; init; } = null!;
         public CalcStackEntry Index { get; init; } = null!;
         public override int Precedence => 50;
-        public override int StartTotalOffset => StartTotalOffsetFor(this, Array, Index);
-        public override int EndTotalOffset => EndTotalOffsetFor(this, Array, Index);
+        public override IEnumerable<ASTNode> Children => new[] { Array.RefExpression, Index.RefExpression };
 
         protected override void WriteToInternal(CodeWriter writer)
         {
@@ -264,8 +255,7 @@ partial class ScriptDecompiler
         public UnaryOp Op { get; init; }
         public CalcStackEntry Value { get; init; } = null!;
         public override int Precedence => 20;
-        public override int StartTotalOffset => StartTotalOffsetFor(this, Value);
-        public override int EndTotalOffset => EndTotalOffsetFor(this, Value);
+        public override IEnumerable<ASTNode> Children => new[] { Value.RefExpression };
 
         protected override void WriteToInternal(CodeWriter writer)
         {
@@ -332,8 +322,7 @@ partial class ScriptDecompiler
         public CalcStackEntry Left { get; init; } = null!;
         public CalcStackEntry Right { get; init; } = null!;
         public override int Precedence => binaryOpInfos[Op].Precedence;
-        public override int StartTotalOffset => StartTotalOffsetFor(this, Left, Right);
-        public override int EndTotalOffset => EndTotalOffsetFor(this, Left, Right);
+        public override IEnumerable<ASTNode> Children => new[] { Left.RefExpression, Right.RefExpression };
 
         protected override void WriteToInternal(CodeWriter writer)
         {
@@ -349,8 +338,7 @@ partial class ScriptDecompiler
     {
         public CalcStackEntry Address { get; init; } = null!;
         public CalcStackEntry Value { get; init; } = null!;
-        public override int StartTotalOffset => StartTotalOffsetFor(this, Address, Value);
-        public override int EndTotalOffset => EndTotalOffsetFor(this, Address, Value);
+        public override IEnumerable<ASTNode> Children => new[] { Address.ValueExpression, Value.RefExpression };
 
         protected override void WriteToInternal(CodeWriter writer)
         {
@@ -366,8 +354,7 @@ partial class ScriptDecompiler
         public IReadOnlyList<CalcStackEntry> Args { get; init; } = Array.Empty<CalcStackEntry>();
         public int LocalScopeSize { get; init; }
         public override int Precedence => 50;
-        public override int StartTotalOffset => StartTotalOffsetFor(this, Args);
-        public override int EndTotalOffset => EndTotalOffsetFor(this, Args);
+        public override IEnumerable<ASTNode> Children => Args.Select(c => c.RefExpression);
 
         protected void WriteArgsTo(CodeWriter writer)
         {
@@ -400,8 +387,7 @@ partial class ScriptDecompiler
     private class ASTDynamicProcCall : ASTCall
     {
         public CalcStackEntry ProcId { get; init; } = null!;
-        public override int StartTotalOffset => StartTotalOffsetFor(base.StartTotalOffset, new[] { ProcId.RefExpression });
-        public override int EndTotalOffset => EndTotalOffsetFor(base.EndTotalOffset, new[] { ProcId.RefExpression });
+        public override IEnumerable<ASTNode> Children => base.Children.Prepend(ProcId.RefExpression);
 
         protected override void WriteToInternal(CodeWriter writer)
         {
@@ -462,8 +448,7 @@ partial class ScriptDecompiler
     private class ASTScriptCall : ASTCall
     {
         public CalcStackEntry ScriptIndex { get; init; } = null!;
-        public override int StartTotalOffset => StartTotalOffsetFor(base.StartTotalOffset, new[] { ScriptIndex.RefExpression });
-        public override int EndTotalOffset => EndTotalOffsetFor(base.EndTotalOffset, new[] { ScriptIndex.RefExpression });
+        public override IEnumerable<ASTNode> Children => base.Children.Prepend(ScriptIndex.RefExpression);
 
         protected override void WriteToInternal(CodeWriter writer)
         {
@@ -479,8 +464,7 @@ partial class ScriptDecompiler
         public bool Zero { get; init; }
         public CalcStackEntry Condition { get; init; } = null!;
         public int Target { get; init; }
-        public override int StartTotalOffset => StartTotalOffsetFor(base.StartTotalOffset, new[] { Condition.RefExpression });
-        public override int EndTotalOffset => EndTotalOffsetFor(base.EndTotalOffset, new[] { Condition.RefExpression });
+        public override IEnumerable<ASTNode> Children => new[] { Condition.RefExpression };
 
         protected override void WriteToInternal(CodeWriter writer)
         {
@@ -495,8 +479,7 @@ partial class ScriptDecompiler
     private class ASTReturn : ASTInstruction
     {
         public ASTExpression Expression { get; init; } = null!;
-        public override int StartTotalOffset => StartTotalOffsetFor(this, Expression);
-        public override int EndTotalOffset => EndTotalOffsetFor(this, Expression);
+        public override IEnumerable<ASTNode> Children => new[] { Expression };
 
         protected override void WriteToInternal(CodeWriter writer)
         {
