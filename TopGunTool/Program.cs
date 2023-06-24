@@ -10,7 +10,7 @@ namespace TopGunTool;
 
 internal class Program
 {
-    static void Main(string[] args) => MainPrintObjects(args);
+    static void Main(string[] args) => MainDecompileScripts(args);
 
     private TextWriter output = null!;
     private ResourceFile resFile = null!;
@@ -161,7 +161,7 @@ internal class Program
                     if (!msg.Data.IsEmpty)
                     {
                         var decompiler = new ScriptDecompiler(msg.Data, resourceFile);
-                        decompiler.Decompile(queueOutput, 1);
+                        decompiler.DecompileCalcAndPrintAll(queueOutput, 1);
                     }
                 }
             }
@@ -189,7 +189,7 @@ internal class Program
                 scriptOutput.WriteLine($"{Path.GetFileNameWithoutExtension(resFilePath)} - {index}");
 
                 var decompiler = new ScriptDecompiler(scriptFull, resourceFile);
-                decompiler.Decompile(scriptOutput);
+                decompiler.DecompileCalcAndPrintAll(scriptOutput);
             }
         }
     }

@@ -64,6 +64,29 @@ partial class ScriptDecompiler
 
     private abstract class ASTInstruction : ASTNode { }
 
+    private class ASTRootOpInstruction : ASTInstruction
+    {
+        public ScriptRootInstruction RootInstruction { get; init; }
+        public IReadOnlyList<ASTInstruction> CalcBody { get; init; } = Array.Empty<ASTInstruction>();
+
+        public override void WriteTo(TextWriter writer, int indent)
+        {
+            WriteIndent(writer, indent);
+            writer.Write(RootInstruction.ToStringWithoutData());
+            if (!CalcBody.Any())
+            {
+                writer.WriteLine();
+                return;
+            }
+
+            writer.WriteLine(" {");
+            foreach (var instruction in CalcBody)
+                instruction.WriteTo(writer, indent + 1);
+            WriteIndent(writer, indent);
+            writer.WriteLine("}");
+        }
+    }
+
     private class ASTTmpDeclaration : ASTInstruction
     {
         public int Index { get; init; }

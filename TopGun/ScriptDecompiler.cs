@@ -13,6 +13,8 @@ public partial class ScriptDecompiler
     private readonly int globalVarCount;
     private readonly ResourceFile resFile;
 
+    private List<ASTInstruction> instructions = new List<ASTInstruction>();
+
     public ScriptDecompiler(ReadOnlySpan<byte> script, ResourceFile resFile)
     {
         this.script = script.ToArray();
@@ -20,56 +22,28 @@ public partial class ScriptDecompiler
         globalVarCount = 5118;
     }
 
-    public void Decompile(TextWriter writer, int indent = 0)
+    public void DecompileCalcAndPrintAll(TextWriter writer, int indent = 0)
     {
-        var reader = new SpanReader(script);
-        while (!reader.EndOfSpan)
+        CreateInitialAST();
+        instructions.ForEach(i => i.WriteTo(writer, indent));
+    }
+
+    private void CreateInitialAST()
+    {
+        instructions.Clear();
+        var rootReader = new SpanReader(script);
+        while (!rootReader.EndOfSpan)
         {
-            var rootInstruction = new ScriptRootInstruction(ref reader);
-            WriteIndent(writer, indent);
-            writer.Write(rootInstruction.ToStringWithoutData());
-
-            if (rootInstruction.Op == ScriptOp.RunCalc && false)
+            var rootInstruction = new ScriptRootInstruction(ref rootReader);
+            instructions.Add(new ASTRootOpInstruction()
             {
-                writer.WriteLine();
-                while (rootInstruction.Op == ScriptOp.RunCalc)
-                {
-                    DecompileCalc(writer, rootInstruction.Data, indent + 1);
-                    if (reader.EndOfSpan)
-                        return;
-                    rootInstruction = new ScriptRootInstruction(ref reader);
-                }
-
-                WriteIndent(writer, indent);
-                writer.Write(rootInstruction.ToStringWithoutData());
-            }
-
-            if (rootInstruction.Data.IsEmpty)
-            {
-                writer.WriteLine();
-                continue;
-            }
-
-            WriteIndent(writer, indent);
-            writer.WriteLine("{");
-            DecompileCalc(writer, rootInstruction.Data, indent + 1);
-            WriteIndent(writer, indent);
-            writer.WriteLine("}");
+                RootInstruction = rootInstruction,
+                CalcBody = CreateInitialCalcAST(rootInstruction.Data)
+            });
         }
     }
 
-    private void DecompileCalc(TextWriter writer, ReadOnlySpan<byte> data, int indent)
-    {
-        //var reader = new SpanReader(data);
-        //while (!reader.EndOfSpan)
-            //writer.WriteLine(new ScriptCalcInstruction(ref reader));
-
-        var instructions = DecompileCalc(data);
-        foreach (var instruction in instructions)
-            instruction.WriteTo(writer, indent);
-    }
-
-    private IReadOnlyList<ASTInstruction> DecompileCalc(ReadOnlySpan<byte> calcScript)
+    private IReadOnlyList<ASTInstruction> CreateInitialCalcAST(ReadOnlySpan<byte> calcScript)
     {
         var output = new List<ASTInstruction>();
         var finalizeOutput = new List<CalcStackEntry>();
