@@ -67,7 +67,7 @@ partial class ScriptDecompiler
     private class ASTRootOpInstruction : ASTInstruction
     {
         public ScriptRootInstruction RootInstruction { get; init; }
-        public IReadOnlyList<ASTInstruction> CalcBody { get; init; } = Array.Empty<ASTInstruction>();
+        public IReadOnlyList<ASTInstruction> CalcBody { get; set; } = Array.Empty<ASTInstruction>();
 
         public override void WriteTo(TextWriter writer, int indent)
         {
@@ -439,6 +439,19 @@ partial class ScriptDecompiler
             writer.Write(") goto ");
             writer.Write(Target.ToString("X4"));
             writer.WriteLine(";");
+        }
+    }
+
+    private class ASTReturn : ASTInstruction
+    {
+        public ASTExpression Expression { get; init; } = null!;
+
+        public override void WriteTo(TextWriter writer, int indent)
+        {
+            WriteIndent(writer, indent);
+            writer.Write("return ");
+            Expression.WriteTo(writer, indent);
+            writer.WriteLine(';');
         }
     }
 }

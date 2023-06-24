@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace TopGun;
 
@@ -25,6 +24,7 @@ public partial class ScriptDecompiler
     public void DecompileCalcAndPrintAll(TextWriter writer, int indent = 0)
     {
         CreateInitialAST();
+        TransformCalcReturns();
         instructions.ForEach(i => i.WriteTo(writer, indent));
     }
 
@@ -217,8 +217,6 @@ public partial class ScriptDecompiler
 
         void FinalizeEntry(CalcStackEntry entry)
         {
-            if (entry.ValueExpression.IsConstant)
-                return;
             entry.RefCount = 2;
             entry.Finalize(finalizeOutput!.Count);
             finalizeOutput.Add(entry);
