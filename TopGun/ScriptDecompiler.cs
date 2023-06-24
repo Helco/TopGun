@@ -180,10 +180,10 @@ public partial class ScriptDecompiler
                 case ScriptCalcOp.JumpZero:
                 case ScriptCalcOp.JumpNonZero:
                 {
-                    var jumpTarget = calcInstr.Offset + calcInstr.Args[0].Value;
+                    var jumpTarget = calcInstr.Offset + 1 + calcInstr.Args[0].Value;
                     var condition = Pop();
                     PushEntry(condition);
-                    output.Add(new ASTConditionalJump { Zero = calcInstr.Op == ScriptCalcOp.JumpZero, Condition = condition, Target = jumpTarget });
+                    output.Add(new ASTConditionalCalcJump { Zero = calcInstr.Op == ScriptCalcOp.JumpZero, Condition = condition, Target = jumpTarget });
                 }break;
 
                 default: throw new NotSupportedException($"Decompiler does not support calc op {calcInstr.Op}");

@@ -425,7 +425,7 @@ partial class ScriptDecompiler
         }
     }
 
-    private class ASTConditionalJump : ASTInstruction
+    private class ASTConditionalCalcJump : ASTInstruction
     {
         public bool Zero { get; init; }
         public CalcStackEntry Condition { get; init; } = null!;
