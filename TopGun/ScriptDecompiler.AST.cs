@@ -28,13 +28,7 @@ partial class ScriptDecompiler
             RefExpression = new ASTTmpValue { Index = index };
         }
 
-        public void WriteTo(TextWriter writer, int indent) => RefExpression.WriteTo(writer, indent);
-    }
-
-    private static void WriteIndent(TextWriter writer, int indent)
-    {
-        while (indent-- > 0)
-            writer.Write('\t');
+        public void WriteTo(CodeWriter writer) => RefExpression.WriteTo(writer);
     }
 
     private static int StartTotalOffsetFor(ASTNode me, params ASTNode[] children) => StartTotalOffsetFor(me, children as IEnumerable<ASTNode>);
@@ -43,6 +37,8 @@ partial class ScriptDecompiler
     private static int StartTotalOffsetFor(ASTNode me, IEnumerable<ASTNode> children) => StartTotalOffsetFor(me.StartOwnOffset, children);
     private static int StartTotalOffsetFor(int myStart, IEnumerable<ASTNode> children)
     {
+        if (!children.Any())
+            return myStart;
         var childrenStart = children.Where(c => c.StartTotalOffset >= 0).Min(c => c.StartTotalOffset);
         return myStart >= 0 ? Math.Min(myStart, childrenStart) : childrenStart;
     }
@@ -53,6 +49,8 @@ partial class ScriptDecompiler
     private static int EndTotalOffsetFor(ASTNode me, IEnumerable<ASTNode> children) => EndTotalOffsetFor(me.EndOwnOffset, children);
     private static int EndTotalOffsetFor(int myEnd, IEnumerable<ASTNode> children)
     {
+        if (!children.Any())
+            return myEnd;
         var childrenEnd = children.Where(c => c.EndTotalOffset >= 0).Max(c => c.EndTotalOffset);
         return myEnd >= 0 ? Math.Max(myEnd, childrenEnd) : childrenEnd;
     }
@@ -63,8 +61,18 @@ partial class ScriptDecompiler
         public int EndOwnOffset { get; set; } = -1;
         public virtual int StartTotalOffset => StartOwnOffset;
         public virtual int EndTotalOffset => EndOwnOffset;
+        public TextPosition StartTextPosition { get; private set; } // only valid after WriteTo
+        public TextPosition EndTextPosition { get; private set; }
+        public virtual IEnumerable<ASTNode> Children => Enumerable.Empty<ASTNode>();
 
-        public abstract void WriteTo(TextWriter writer, int indent);
+        public void WriteTo(CodeWriter writer)
+        {
+            StartTextPosition = writer.Position;
+            WriteToInternal(writer);
+            EndTextPosition = writer.Position;
+        }
+
+        protected abstract void WriteToInternal(CodeWriter writer);
     }
 
     private abstract class ASTExpression : ASTNode
@@ -72,18 +80,18 @@ partial class ScriptDecompiler
         public virtual bool IsConstant { get; } = false;
         public abstract int Precedence { get; }
 
-        protected void WriteExpr(TextWriter writer, int indent, CalcStackEntry entry) =>
-            WriteExpr(writer, indent, entry.RefExpression);
-        protected void WriteExpr(TextWriter writer, int indent, ASTExpression expr)
+        protected void WriteExpr(CodeWriter writer, CalcStackEntry entry) =>
+            WriteExpr(writer, entry.RefExpression);
+        protected void WriteExpr(CodeWriter writer, ASTExpression expr)
         {
             if (Precedence > expr.Precedence)
             {
                 writer.Write('(');
-                expr.WriteTo(writer, indent);
+                expr.WriteTo(writer);
                 writer.Write(')');
             }
             else
-                expr.WriteTo(writer, indent);
+                expr.WriteTo(writer);
         }
     }
 
@@ -94,9 +102,8 @@ partial class ScriptDecompiler
         public ScriptRootInstruction RootInstruction { get; init; }
         public IReadOnlyList<ASTInstruction> CalcBody { get; set; } = Array.Empty<ASTInstruction>();
 
-        public override void WriteTo(TextWriter writer, int indent)
+        protected override void WriteToInternal(CodeWriter writer)
         {
-            WriteIndent(writer, indent);
             writer.Write(RootInstruction.ToStringWithoutData());
             if (!CalcBody.Any())
             {
@@ -105,9 +112,9 @@ partial class ScriptDecompiler
             }
 
             writer.WriteLine(" {");
+            using var subWriter = writer.Indented;
             foreach (var instruction in CalcBody)
-                instruction.WriteTo(writer, indent + 1);
-            WriteIndent(writer, indent);
+                instruction.WriteTo(subWriter);
             writer.WriteLine("}");
         }
     }
@@ -119,13 +126,12 @@ partial class ScriptDecompiler
         public override int StartTotalOffset => StartTotalOffsetFor(this, Value);
         public override int EndTotalOffset => EndTotalOffsetFor(this, Value);
 
-        public override void WriteTo(TextWriter writer, int indent)
+        protected override void WriteToInternal(CodeWriter writer)
         {
-            WriteIndent(writer, indent);
             writer.Write("tmp");
             writer.Write(Index);
             writer.Write(" = ");
-            Value.WriteTo(writer, indent);
+            Value.WriteTo(writer);
             writer.WriteLine(";");
         }
     }
@@ -136,7 +142,7 @@ partial class ScriptDecompiler
         public override bool IsConstant => true;
         public override int Precedence => 100;
 
-        public override void WriteTo(TextWriter writer, int indent)
+        protected override void WriteToInternal(CodeWriter writer)
         {
             writer.Write("tmp");
             writer.Write(Index);
@@ -149,10 +155,9 @@ partial class ScriptDecompiler
         public override int StartTotalOffset => StartTotalOffsetFor(this, Expression);
         public override int EndTotalOffset => EndTotalOffsetFor(this, Expression);
 
-        public override void WriteTo(TextWriter writer, int indent)
+        protected override void WriteToInternal(CodeWriter writer)
         {
-            WriteIndent(writer, indent);
-            Expression.WriteTo(writer, indent);
+            Expression.WriteTo(writer);
             writer.WriteLine(';');
         }
     }
@@ -163,7 +168,7 @@ partial class ScriptDecompiler
         public override bool IsConstant => true;
         public override int Precedence => 100;
 
-        public override void WriteTo(TextWriter writer, int indent)
+        protected override void WriteToInternal(CodeWriter writer)
         {
             writer.Write(Value);
         }
@@ -177,7 +182,7 @@ partial class ScriptDecompiler
 
     private class ASTGlobalVarValue : ASTVarReference
     {
-        public override void WriteTo(TextWriter writer, int indent)
+        protected override void WriteToInternal(CodeWriter writer)
         {
             writer.Write("global");
             writer.Write(Index);
@@ -186,7 +191,7 @@ partial class ScriptDecompiler
 
     private class ASTLocalVarValue : ASTVarReference
     {
-        public override void WriteTo(TextWriter writer, int indent)
+        protected override void WriteToInternal(CodeWriter writer)
         {
             writer.Write("local");
             writer.Write(Index);
@@ -196,7 +201,7 @@ partial class ScriptDecompiler
     private class ASTGlobalVarAddress : ASTVarReference
     {
         public override bool IsConstant => true;
-        public override void WriteTo(TextWriter writer, int indent)
+        protected override void WriteToInternal(CodeWriter writer)
         {
             writer.Write("&global");
             writer.Write(Index);
@@ -206,7 +211,7 @@ partial class ScriptDecompiler
     private class ASTLocalVarAddress : ASTVarReference
     {
         public override bool IsConstant => true;
-        public override void WriteTo(TextWriter writer, int indent)
+        protected override void WriteToInternal(CodeWriter writer)
         {
             writer.Write("&local");
             writer.Write(Index);
@@ -221,11 +226,11 @@ partial class ScriptDecompiler
         public override int StartTotalOffset => StartTotalOffsetFor(this, Array, Index);
         public override int EndTotalOffset => EndTotalOffsetFor(this, Array, Index);
 
-        public override void WriteTo(TextWriter writer, int indent)
+        protected override void WriteToInternal(CodeWriter writer)
         {
-            WriteExpr(writer, indent, Array);
+            WriteExpr(writer, Array);
             writer.Write('[');
-            Index.WriteTo(writer, indent);
+            Index.WriteTo(writer);
             writer.Write(']');
         }
     }
@@ -262,12 +267,12 @@ partial class ScriptDecompiler
         public override int StartTotalOffset => StartTotalOffsetFor(this, Value);
         public override int EndTotalOffset => EndTotalOffsetFor(this, Value);
 
-        public override void WriteTo(TextWriter writer, int indent)
+        protected override void WriteToInternal(CodeWriter writer)
         {
             var info = unaryOpInfos[Op];
             if (info.IsPrefix)
                 writer.Write(info.Name);
-            WriteExpr(writer, indent, Value);
+            WriteExpr(writer, Value);
             if (!info.IsPrefix)
                 writer.Write(info.Name);
         }
@@ -330,13 +335,13 @@ partial class ScriptDecompiler
         public override int StartTotalOffset => StartTotalOffsetFor(this, Left, Right);
         public override int EndTotalOffset => EndTotalOffsetFor(this, Left, Right);
 
-        public override void WriteTo(TextWriter writer, int indent)
+        protected override void WriteToInternal(CodeWriter writer)
         {
-            WriteExpr(writer, indent, Left);
+            WriteExpr(writer, Left);
             writer.Write(' ');
             writer.Write(binaryOpInfos[Op].Name);
             writer.Write(' ');
-            WriteExpr(writer, indent, Right);
+            WriteExpr(writer, Right);
         }
     }
 
@@ -347,12 +352,11 @@ partial class ScriptDecompiler
         public override int StartTotalOffset => StartTotalOffsetFor(this, Address, Value);
         public override int EndTotalOffset => EndTotalOffsetFor(this, Address, Value);
 
-        public override void WriteTo(TextWriter writer, int indent)
+        protected override void WriteToInternal(CodeWriter writer)
         {
-            WriteIndent(writer, indent);
-            Address.WriteTo(writer, indent);
+            Address.WriteTo(writer);
             writer.Write(" = ");
-            Value.WriteTo(writer, indent);
+            Value.WriteTo(writer);
             writer.WriteLine(";");
         }
     }
@@ -365,29 +369,27 @@ partial class ScriptDecompiler
         public override int StartTotalOffset => StartTotalOffsetFor(this, Args);
         public override int EndTotalOffset => EndTotalOffsetFor(this, Args);
 
-        protected void WriteArgsTo(TextWriter writer, int indent)
+        protected void WriteArgsTo(CodeWriter writer)
         {
             writer.Write('<');
             writer.Write(LocalScopeSize);
             writer.Write(">(");
 
             if (Args.Count == 1)
-                Args[0].WriteTo(writer, indent);
+                Args[0].WriteTo(writer);
             else if (Args.Count > 1)
             {
                 writer.WriteLine();
+                using var subWriter = writer.Indented;
                 foreach (var arg in Args.SkipLast(1))
                 {
-                    WriteIndent(writer, indent + 1);
-                    arg.WriteTo(writer, indent + 1);
-                    writer.WriteLine(',');
+                    arg.WriteTo(subWriter);
+                    subWriter.WriteLine(',');
                 }
                 if (Args.Any())
                 {
-                    WriteIndent(writer, indent + 1);
-                    Args.Last().WriteTo(writer, indent + 1);
-                    writer.WriteLine();
-                    WriteIndent(writer, indent);
+                    Args.Last().WriteTo(subWriter);
+                    subWriter.WriteLine();
                 }
             }
 
@@ -401,12 +403,12 @@ partial class ScriptDecompiler
         public override int StartTotalOffset => StartTotalOffsetFor(base.StartTotalOffset, new[] { ProcId.RefExpression });
         public override int EndTotalOffset => EndTotalOffsetFor(base.EndTotalOffset, new[] { ProcId.RefExpression });
 
-        public override void WriteTo(TextWriter writer, int indent)
+        protected override void WriteToInternal(CodeWriter writer)
         {
             writer.Write("Dynamic[");
-            ProcId.WriteTo(writer, indent);
+            ProcId.WriteTo(writer);
             writer.Write(']');
-            WriteArgsTo(writer, indent);
+            WriteArgsTo(writer);
         }
     }
 
@@ -414,12 +416,12 @@ partial class ScriptDecompiler
     {
         public int ProcId { get; init; }
 
-        public override void WriteTo(TextWriter writer, int indent)
+        protected override void WriteToInternal(CodeWriter writer)
         {
             writer.Write("UnknownExternal[");
             writer.Write(ProcId);
             writer.Write(']');
-            WriteArgsTo(writer, indent);
+            WriteArgsTo(writer);
         }
     }
 
@@ -428,14 +430,14 @@ partial class ScriptDecompiler
         public string Plugin { get; init; } = "";
         public string Proc { get; init; } = "";
 
-        public override void WriteTo(TextWriter writer, int indent)
+        protected override void WriteToInternal(CodeWriter writer)
         {
             writer.Write("External[");
             writer.Write(Plugin);
             writer.Write('.');
             writer.Write(Proc);
             writer.Write(']');
-            WriteArgsTo(writer, indent);
+            WriteArgsTo(writer);
         }
     }
 
@@ -443,7 +445,7 @@ partial class ScriptDecompiler
     {
         public int ProcId { get; init; }
 
-        public override void WriteTo(TextWriter writer, int indent)
+        protected override void WriteToInternal(CodeWriter writer)
         {
             if (Enum.TryParse<ScriptOp>(ProcId.ToString(), out var internalProc))
                 writer.Write(internalProc);
@@ -453,7 +455,7 @@ partial class ScriptDecompiler
                 writer.Write(ProcId);
                 writer.Write(']');
             }
-            WriteArgsTo(writer, indent);
+            WriteArgsTo(writer);
         }
     }
     
@@ -463,12 +465,12 @@ partial class ScriptDecompiler
         public override int StartTotalOffset => StartTotalOffsetFor(base.StartTotalOffset, new[] { ScriptIndex.RefExpression });
         public override int EndTotalOffset => EndTotalOffsetFor(base.EndTotalOffset, new[] { ScriptIndex.RefExpression });
 
-        public override void WriteTo(TextWriter writer, int indent)
+        protected override void WriteToInternal(CodeWriter writer)
         {
             writer.Write("Script[");
-            ScriptIndex.WriteTo(writer, indent);
+            ScriptIndex.WriteTo(writer);
             writer.Write(']');
-            WriteArgsTo(writer, indent);
+            WriteArgsTo(writer);
         }
     }
 
@@ -480,11 +482,10 @@ partial class ScriptDecompiler
         public override int StartTotalOffset => StartTotalOffsetFor(base.StartTotalOffset, new[] { Condition.RefExpression });
         public override int EndTotalOffset => EndTotalOffsetFor(base.EndTotalOffset, new[] { Condition.RefExpression });
 
-        public override void WriteTo(TextWriter writer, int indent)
+        protected override void WriteToInternal(CodeWriter writer)
         {
-            WriteIndent(writer, indent);
             writer.Write(Zero ? "ifnot (" : "if (");
-            Condition.WriteTo(writer, indent);
+            Condition.WriteTo(writer);
             writer.Write(") goto ");
             writer.Write(Target.ToString("X4"));
             writer.WriteLine(";");
@@ -497,11 +498,10 @@ partial class ScriptDecompiler
         public override int StartTotalOffset => StartTotalOffsetFor(this, Expression);
         public override int EndTotalOffset => EndTotalOffsetFor(this, Expression);
 
-        public override void WriteTo(TextWriter writer, int indent)
+        protected override void WriteToInternal(CodeWriter writer)
         {
-            WriteIndent(writer, indent);
             writer.Write("return ");
-            Expression.WriteTo(writer, indent);
+            Expression.WriteTo(writer);
             writer.WriteLine(';');
         }
     }

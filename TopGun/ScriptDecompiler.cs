@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 
@@ -21,11 +20,12 @@ public partial class ScriptDecompiler
         globalVarCount = 5118;
     }
 
-    public void DecompileCalcAndPrintAll(TextWriter writer, int indent = 0)
+    public void DecompileCalcAndPrintAll(TextWriter textWriter, int indent = 0)
     {
+        using var codeWriter = new CodeWriter(textWriter, indent, disposeWriter: false);
         CreateInitialAST();
         TransformCalcReturns();
-        instructions.ForEach(i => i.WriteTo(writer, indent));
+        instructions.ForEach(i => i.WriteTo(codeWriter));
     }
 
     private void CreateInitialAST()
