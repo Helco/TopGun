@@ -36,7 +36,7 @@ partial class ScriptDecompiler
 
     private void TransformCalcReturns()
     {
-        foreach (ASTRootOpInstruction instr in instructions)
+        foreach (ASTRootOpInstruction instr in astRoot.Instructions)
         {
             var mode = GetCalcInRootMode(instr.RootInstruction.Op);
             if (mode == CalcInRootMode.ShouldNotExist && instr.CalcBody.Any())
@@ -53,24 +53,27 @@ partial class ScriptDecompiler
         {
             if (instr.CalcBody.LastOrDefault() is not ASTTmpDeclaration tmpDecl)
                 return;
-            instr.CalcBody = instr.CalcBody
-                .SkipLast(1)
-                .Append(new ASTExprInstr()
-                {
-                    Expression = tmpDecl.Value
-                }).ToArray();
+            var exprInstr = new ASTExprInstr()
+            {
+                Parent = tmpDecl.Parent,
+                Expression = tmpDecl.Value
+            };
+            exprInstr.Expression.Parent = exprInstr;
+            tmpDecl.ReplaceMeWith(exprInstr);
+
         }
 
         void TransformReturningCalc(ASTRootOpInstruction instr)
         {
             if (instr.CalcBody.LastOrDefault() is not ASTTmpDeclaration tmpDecl)
                 return;
-            instr.CalcBody = instr.CalcBody
-                .SkipLast(1)
-                .Append(new ASTReturn()
-                {
-                    Expression = tmpDecl.Value
-                }).ToArray();
+            var returnInstr = new ASTReturn()
+            {
+                Parent = tmpDecl.Parent,
+                Value = tmpDecl.Value
+            };
+            returnInstr.Value.Parent = returnInstr;
+            tmpDecl.ReplaceMeWith(returnInstr);
         }
     }
 }

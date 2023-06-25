@@ -11,7 +11,8 @@ public partial class ScriptDecompiler
     private readonly int globalVarCount;
     private readonly ResourceFile resFile;
 
-    private List<ASTInstruction> instructions = new List<ASTInstruction>();
+    private int nextTmpIndex = 0;
+    private ASTRoot astRoot = new();
 
     public ScriptDecompiler(ReadOnlySpan<byte> script, ResourceFile resFile)
     {
@@ -24,28 +25,35 @@ public partial class ScriptDecompiler
     {
         using var codeWriter = new CodeWriter(textWriter, indent, disposeWriter: false);
         CreateInitialAST();
+        TransformCalcLazyBooleans();
         TransformCalcReturns();
-        instructions.ForEach(i => i.WriteTo(codeWriter));
+        astRoot.WriteTo(codeWriter);
     }
 
     private void CreateInitialAST()
     {
-        instructions.Clear();
+        astRoot = new();
         var rootReader = new SpanReader(script);
         while (!rootReader.EndOfSpan)
         {
             var rootInstruction = new ScriptRootInstruction(ref rootReader);
-            instructions.Add(new ASTRootOpInstruction()
+            var calcBody = CreateInitialCalcAST(rootInstruction.Data, rootInstruction.DataOffset);
+
+            var astInstruction = new ASTRootOpInstruction()
             {
+                Parent = astRoot.Parent,
                 RootInstruction = rootInstruction,
-                CalcBody = CreateInitialCalcAST(rootInstruction.Data, rootInstruction.DataOffset),
+                CalcBody = calcBody,
                 StartOwnOffset = rootInstruction.Offset,
                 EndOwnOffset = rootInstruction.EndOffset
-            });
+            };
+            astInstruction.FixChildrenParents();
+
+            astRoot.Instructions.Add(astInstruction);
         }
     }
 
-    private IReadOnlyList<ASTInstruction> CreateInitialCalcAST(ReadOnlySpan<byte> calcScript, int baseOffset)
+    private List<ASTInstruction> CreateInitialCalcAST(ReadOnlySpan<byte> calcScript, int baseOffset)
     {
         var output = new List<ASTInstruction>();
         var finalizeOutput = new List<CalcStackEntry>();
@@ -123,7 +131,7 @@ public partial class ScriptDecompiler
                         .Repeat(0, argCount)
                         .Select(_ => Pop())
                         .Reverse()
-                        .ToArray();
+                        .ToList();
                     var procId = Pop();
                     if (procId.ValueExpression is ASTImmediate immProcId)
                     {
@@ -141,6 +149,7 @@ public partial class ScriptDecompiler
                         }
                         else
                             Push(calcInstr, new ASTInternalProcCall { ProcId = procIdValue, Args = args, LocalScopeSize = localScopeSize });
+                        stack.Last().ValueExpression.StartOwnOffset = immProcId.StartOwnOffset;
                     }
                     else
                         Push(calcInstr, new ASTDynamicProcCall { ProcId = procId, Args = args, LocalScopeSize = localScopeSize });
@@ -153,7 +162,7 @@ public partial class ScriptDecompiler
                         .Repeat(0, argCount)
                         .Select(_ => Pop())
                         .Reverse()
-                        .ToArray();
+                        .ToList();
                     var procId = Pop();
                     Push(calcInstr, new ASTScriptCall { ScriptIndex = procId, Args = args, LocalScopeSize = localScopeSize });
                 }
@@ -245,7 +254,7 @@ public partial class ScriptDecompiler
             if (entry.ValueExpression.IsConstant && !evenConstants)
                 return;
             entry.RefCount = 2;
-            entry.Finalize(finalizeOutput!.Count);
+            entry.Finalize(nextTmpIndex++);
             finalizeOutput.Add(entry);
         }
     }

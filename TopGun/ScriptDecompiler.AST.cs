@@ -25,7 +25,7 @@ partial class ScriptDecompiler
         {
             RefCount = 2;
             FinalizeIndex = index;
-            RefExpression = new ASTTmpValue { Index = index };
+            RefExpression = new ASTTmpValue { Parent = ValueExpression.Parent, Index = index };
         }
 
         public void WriteTo(CodeWriter writer) => RefExpression.WriteTo(writer);
@@ -33,15 +33,17 @@ partial class ScriptDecompiler
 
     private abstract class ASTNode
     {
+        public ASTNode? Parent { get; set; }
         public int StartOwnOffset { get; set; } = -1;
         public int EndOwnOffset { get; set; } = -1;
         public virtual int StartTotalOffset
         {
             get
             {
-                if (!Children.Any())
+                var children = Children.Where(c => c.StartTotalOffset >= 0);
+                if (!children.Any())
                     return StartOwnOffset;
-                var childrenStart = Children.Where(c => c.StartTotalOffset >= 0).Min(c => c.StartTotalOffset);
+                var childrenStart = children.Min(c => c.StartTotalOffset);
                 return StartOwnOffset >= 0 ? Math.Min(StartOwnOffset, childrenStart) : childrenStart;
             }
         }
@@ -49,15 +51,27 @@ partial class ScriptDecompiler
         {
             get
             {
-                if (!Children.Any())
+                var children = Children.Where(c => c.EndTotalOffset >= 0);
+                if (!children.Any())
                     return EndOwnOffset;
-                var childrenEnd = Children.Where(c => c.EndTotalOffset >= 0).Max(c => c.EndTotalOffset);
+                var childrenEnd = children.Max(c => c.EndTotalOffset);
                 return EndOwnOffset >= 0 ? Math.Max(EndOwnOffset, childrenEnd) : childrenEnd;
             }
         }
         public TextPosition StartTextPosition { get; private set; } // only valid after WriteTo
         public TextPosition EndTextPosition { get; private set; }
         public virtual IEnumerable<ASTNode> Children => Enumerable.Empty<ASTNode>();
+
+        public IEnumerable<ASTNode> AllChildren => Children.SelectMany(c => c.AllChildren).Prepend(this);
+
+        public void FixChildrenParents()
+        {
+            foreach (var child in Children)
+            {
+                child.FixChildrenParents();
+                child.Parent = this;
+            }
+        }
 
         public void WriteTo(CodeWriter writer)
         {
@@ -67,6 +81,13 @@ partial class ScriptDecompiler
         }
 
         protected abstract void WriteToInternal(CodeWriter writer);
+
+        public void ReplaceMeWith(ASTNode newNode) => Parent!.ReplaceChild(this, newNode);
+
+        public virtual void ReplaceChild(ASTNode oldChild, ASTNode newChild)
+        {
+            throw new ArgumentOutOfRangeException(nameof(oldChild), "ASTNode has no children to replace");
+        }
     }
 
     private abstract class ASTExpression : ASTNode
@@ -94,7 +115,20 @@ partial class ScriptDecompiler
     private class ASTRootOpInstruction : ASTInstruction
     {
         public ScriptRootInstruction RootInstruction { get; init; }
-        public IReadOnlyList<ASTInstruction> CalcBody { get; set; } = Array.Empty<ASTInstruction>();
+        public List<ASTInstruction> CalcBody { get; set; } = new();
+        public override IEnumerable<ASTNode> Children => CalcBody;
+
+        public override void ReplaceChild(ASTNode oldChild, ASTNode newChild)
+        {
+            int index = -1;
+            if (oldChild is ASTInstruction oldInstr)
+                index = CalcBody.IndexOf(oldInstr);
+            if (index < 0)
+                throw new ArgumentOutOfRangeException(nameof(oldChild), "Could not find child to replace");
+            CalcBody[index] = (ASTInstruction)newChild;
+            newChild.Parent = this;
+            oldChild.Parent = null;
+        }
 
         protected override void WriteToInternal(CodeWriter writer)
         {
@@ -116,8 +150,16 @@ partial class ScriptDecompiler
     private class ASTTmpDeclaration : ASTInstruction
     {
         public int Index { get; init; }
-        public ASTExpression Value { get; init; } = null!;
+        public ASTExpression Value { get; set; } = null!;
         public override IEnumerable<ASTNode> Children => new[] { Value };
+
+        public override void ReplaceChild(ASTNode oldChild, ASTNode newChild)
+        {
+            if (Value == oldChild)
+                Value = (ASTExpression)newChild;
+            else
+                base.ReplaceChild(oldChild, newChild);
+        }
 
         protected override void WriteToInternal(CodeWriter writer)
         {
@@ -144,8 +186,16 @@ partial class ScriptDecompiler
 
     private class ASTExprInstr : ASTInstruction
     {
-        public ASTExpression Expression { get; init; } = null!;
+        public ASTExpression Expression { get; set; } = null!;
         public override IEnumerable<ASTNode> Children => new[] { Expression };
+
+        public override void ReplaceChild(ASTNode oldChild, ASTNode newChild)
+        {
+            if (Expression == oldChild)
+                Expression = (ASTExpression)newChild;
+            else
+                base.ReplaceChild(oldChild, newChild);
+        }
 
         protected override void WriteToInternal(CodeWriter writer)
         {
@@ -212,10 +262,20 @@ partial class ScriptDecompiler
 
     private class ASTArrayAccess : ASTExpression
     {
-        public CalcStackEntry Array { get; init; } = null!;
-        public CalcStackEntry Index { get; init; } = null!;
+        public CalcStackEntry Array { get; set; } = null!;
+        public CalcStackEntry Index { get; set; } = null!;
         public override int Precedence => 50;
         public override IEnumerable<ASTNode> Children => new[] { Array.RefExpression, Index.RefExpression };
+
+        public override void ReplaceChild(ASTNode oldChild, ASTNode newChild)
+        {
+            if (Array.RefExpression == oldChild)
+                Array = new((ASTExpression)newChild, -1);
+            else if (Index.RefExpression == oldChild)
+                Array = new((ASTExpression)newChild, -1);
+            else
+                base.ReplaceChild(oldChild, newChild);
+        }
 
         protected override void WriteToInternal(CodeWriter writer)
         {
@@ -253,9 +313,17 @@ partial class ScriptDecompiler
     private class ASTUnary : ASTExpression
     {
         public UnaryOp Op { get; init; }
-        public CalcStackEntry Value { get; init; } = null!;
+        public CalcStackEntry Value { get; set; } = null!;
         public override int Precedence => 20;
         public override IEnumerable<ASTNode> Children => new[] { Value.RefExpression };
+
+        public override void ReplaceChild(ASTNode oldChild, ASTNode newChild)
+        {
+            if (Value.RefExpression == oldChild)
+                Value = new((ASTExpression)newChild, -1);
+            else
+                base.ReplaceChild(oldChild, newChild);
+        }
 
         protected override void WriteToInternal(CodeWriter writer)
         {
@@ -318,11 +386,21 @@ partial class ScriptDecompiler
 
     private class ASTBinary : ASTExpression
     {
-        public BinaryOp Op { get; init; }
-        public CalcStackEntry Left { get; init; } = null!;
-        public CalcStackEntry Right { get; init; } = null!;
+        public BinaryOp Op { get; set; }
+        public CalcStackEntry Left { get; set; } = null!;
+        public CalcStackEntry Right { get; set; } = null!;
         public override int Precedence => binaryOpInfos[Op].Precedence;
         public override IEnumerable<ASTNode> Children => new[] { Left.RefExpression, Right.RefExpression };
+
+        public override void ReplaceChild(ASTNode oldChild, ASTNode newChild)
+        {
+            if (Left.RefExpression == oldChild)
+                Left = new((ASTExpression)newChild, -1);
+            else if (Right.RefExpression == oldChild)
+                Right = new((ASTExpression)newChild, -1);
+            else
+                base.ReplaceChild(oldChild, newChild);
+        }
 
         protected override void WriteToInternal(CodeWriter writer)
         {
@@ -336,9 +414,19 @@ partial class ScriptDecompiler
 
     private class ASTAssign : ASTInstruction
     {
-        public CalcStackEntry Address { get; init; } = null!;
-        public CalcStackEntry Value { get; init; } = null!;
+        public CalcStackEntry Address { get; set; } = null!;
+        public CalcStackEntry Value { get; set; } = null!;
         public override IEnumerable<ASTNode> Children => new[] { Address.ValueExpression, Value.RefExpression };
+
+        public override void ReplaceChild(ASTNode oldChild, ASTNode newChild)
+        {
+            if (Address.RefExpression == oldChild)
+                Address = new((ASTExpression)newChild, -1);
+            else if (Value.RefExpression == oldChild)
+                Value = new((ASTExpression)newChild, -1);
+            else
+                base.ReplaceChild(oldChild, newChild);
+        }
 
         protected override void WriteToInternal(CodeWriter writer)
         {
@@ -351,10 +439,19 @@ partial class ScriptDecompiler
 
     private abstract class ASTCall : ASTExpression
     {
-        public IReadOnlyList<CalcStackEntry> Args { get; init; } = Array.Empty<CalcStackEntry>();
+        public List<CalcStackEntry> Args { get; init; } = new();
         public int LocalScopeSize { get; init; }
         public override int Precedence => 50;
         public override IEnumerable<ASTNode> Children => Args.Select(c => c.RefExpression);
+
+        public override void ReplaceChild(ASTNode oldChild, ASTNode newChild)
+        {
+            var index = Args.FindIndex(e => e.RefExpression == oldChild);
+            if (index >= 0)
+                Args[index] = new((ASTExpression)newChild, -1);
+            else
+                base.ReplaceChild(oldChild, newChild);
+        }
 
         protected void WriteArgsTo(CodeWriter writer)
         {
@@ -386,8 +483,16 @@ partial class ScriptDecompiler
 
     private class ASTDynamicProcCall : ASTCall
     {
-        public CalcStackEntry ProcId { get; init; } = null!;
+        public CalcStackEntry ProcId { get; set; } = null!;
         public override IEnumerable<ASTNode> Children => base.Children.Prepend(ProcId.RefExpression);
+
+        public override void ReplaceChild(ASTNode oldChild, ASTNode newChild)
+        {
+            if (ProcId.RefExpression == oldChild)
+                ProcId = new((ASTExpression)newChild, -1);
+            else
+                base.ReplaceChild(oldChild, newChild);
+        }
 
         protected override void WriteToInternal(CodeWriter writer)
         {
@@ -447,8 +552,16 @@ partial class ScriptDecompiler
     
     private class ASTScriptCall : ASTCall
     {
-        public CalcStackEntry ScriptIndex { get; init; } = null!;
+        public CalcStackEntry ScriptIndex { get; set; } = null!;
         public override IEnumerable<ASTNode> Children => base.Children.Prepend(ScriptIndex.RefExpression);
+
+        public override void ReplaceChild(ASTNode oldChild, ASTNode newChild)
+        {
+            if (ScriptIndex.RefExpression == oldChild)
+                ScriptIndex = new((ASTExpression)newChild, -1);
+            else
+                base.ReplaceChild(oldChild, newChild);
+        }
 
         protected override void WriteToInternal(CodeWriter writer)
         {
@@ -462,9 +575,17 @@ partial class ScriptDecompiler
     private class ASTConditionalCalcJump : ASTInstruction
     {
         public bool Zero { get; init; }
-        public CalcStackEntry Condition { get; init; } = null!;
+        public CalcStackEntry Condition { get; set; } = null!;
         public int Target { get; init; }
         public override IEnumerable<ASTNode> Children => new[] { Condition.RefExpression };
+
+        public override void ReplaceChild(ASTNode oldChild, ASTNode newChild)
+        {
+            if (Condition.RefExpression == oldChild)
+                Condition = new((ASTExpression)newChild, -1);
+            else
+                base.ReplaceChild(oldChild, newChild);
+        }
 
         protected override void WriteToInternal(CodeWriter writer)
         {
@@ -478,14 +599,42 @@ partial class ScriptDecompiler
 
     private class ASTReturn : ASTInstruction
     {
-        public ASTExpression Expression { get; init; } = null!;
-        public override IEnumerable<ASTNode> Children => new[] { Expression };
+        public ASTExpression Value { get; set; } = null!;
+        public override IEnumerable<ASTNode> Children => new[] { Value };
+
+        public override void ReplaceChild(ASTNode oldChild, ASTNode newChild)
+        {
+            if (Value == oldChild)
+                Value = (ASTExpression)newChild;
+            else
+                base.ReplaceChild(oldChild, newChild);
+        }
 
         protected override void WriteToInternal(CodeWriter writer)
         {
             writer.Write("return ");
-            Expression.WriteTo(writer);
+            Value.WriteTo(writer);
             writer.WriteLine(';');
+        }
+    }
+
+    private class ASTRoot : ASTNode
+    {
+        public List<ASTInstruction> Instructions { get; init; } = new();
+        public override IEnumerable<ASTNode> Children => Instructions;
+
+        public override void ReplaceChild(ASTNode oldChild, ASTNode newChild)
+        {
+            int index = Instructions.IndexOf((oldChild as ASTInstruction)!);
+            if (index >= 0)
+                Instructions[index] = (ASTInstruction)newChild;
+            else
+                base.ReplaceChild(oldChild, newChild);
+        }
+
+        protected override void WriteToInternal(CodeWriter writer)
+        {
+            Instructions.ForEach(i => i.WriteTo(writer));
         }
     }
 }
