@@ -10,7 +10,7 @@ partial class ScriptDecompiler
 {
     private void TransformCalcLazyBooleans()
     {
-        var potentialOps = astRoot.AllChildren
+        var potentialOps = astEntry.AllChildren
             .OfType<ASTBinary>()
             .Where(b => b.Op == BinaryOp.EvalBooleanAnd || b.Op == BinaryOp.EvalBooleanOr)
             .Where(b => b.Left.RefExpression is ASTTmpValue)
@@ -33,7 +33,7 @@ partial class ScriptDecompiler
          */
 
         var tmpIndex = ((ASTTmpValue)potentialOp.Left.RefExpression).Index;
-        var tmpDecl = astRoot.AllChildren
+        var tmpDecl = astEntry.AllChildren
             .OfType<ASTTmpDeclaration>()
             .Single(d => d.Index == tmpIndex);
         var parent = (ASTRootOpInstruction)tmpDecl.Parent!;

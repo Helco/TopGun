@@ -36,7 +36,16 @@ partial class ScriptDecompiler
 
     private void TransformCalcReturns()
     {
-        foreach (ASTRootOpInstruction instr in astRoot.Instructions)
+        /*
+         * After initial AST calc scripts often end with a temporary declaration as finalization of an expression.
+         * Depending on the root operation this expression result is either ignored by the engine or used as return
+         * value of the calc script.
+         * 
+         * This method either removes the declaration, leaving behind an expression instruction or
+         * replaces the declaration with a return instruction.
+         */
+
+        foreach (ASTRootOpInstruction instr in astEntry.Instructions)
         {
             var mode = GetCalcInRootMode(instr.RootInstruction.Op);
             if (mode == CalcInRootMode.ShouldNotExist && instr.CalcBody.Any())
@@ -47,6 +56,7 @@ partial class ScriptDecompiler
                 TransformNonReturningCalc(instr);
             else if (mode == CalcInRootMode.ReturnsValue)
                 TransformReturningCalc(instr);
+            // last else would be ShouldNotExist without a calc body as expected. Nothing to do.
         }
 
         void TransformNonReturningCalc(ASTRootOpInstruction instr)

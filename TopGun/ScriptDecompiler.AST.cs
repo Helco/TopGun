@@ -599,12 +599,12 @@ partial class ScriptDecompiler
 
     private class ASTReturn : ASTInstruction
     {
-        public ASTExpression Value { get; set; } = null!;
-        public override IEnumerable<ASTNode> Children => new[] { Value };
+        public ASTExpression? Value { get; set; }
+        public override IEnumerable<ASTNode> Children => Value == null ? Array.Empty<ASTNode>() : new[] { Value };
 
         public override void ReplaceChild(ASTNode oldChild, ASTNode newChild)
         {
-            if (Value == oldChild)
+            if (Value != null && Value == oldChild)
                 Value = (ASTExpression)newChild;
             else
                 base.ReplaceChild(oldChild, newChild);
@@ -612,16 +612,89 @@ partial class ScriptDecompiler
 
         protected override void WriteToInternal(CodeWriter writer)
         {
+            if (Value == null)
+            {
+                writer.WriteLine("return;");
+                return;
+            }
             writer.Write("return ");
             Value.WriteTo(writer);
             writer.WriteLine(';');
         }
     }
 
-    private class ASTRoot : ASTNode
+    private class ASTGoto : ASTInstruction
+    {
+        public required int Target { get; set; }
+
+        protected override void WriteToInternal(CodeWriter writer)
+        {
+            writer.WriteLine($"goto {Target:D4};");
+        }
+    }
+
+    private enum BlockType
+    {
+        Normal,
+        Selection, // after CFA only Selection blocks should have multiple outbound edges
+        Loop, // after CFA only Loop blocks should have backward edges
+        Exit // should not have Outbound edges nor Instructions
+    }
+
+    private abstract class ASTBlock : ASTNode
     {
         public List<ASTInstruction> Instructions { get; init; } = new();
-        public override IEnumerable<ASTNode> Children => Instructions;
+        public ASTBlock? ContinueBlock { get; set; } = null;
+        public override IEnumerable<ASTNode> Children =>
+            ContinueBlock == null ? Instructions : (Instructions as IEnumerable<ASTNode>).Append(ContinueBlock);
+
+        public HashSet<ASTBlock> Outbound { get; init; } = new();
+        public HashSet<ASTBlock> InboundForward { get; init; } = new();
+        public HashSet<ASTBlock> InboundBackward { get; init; } = new();
+        public bool IsMerge { get; set; } // after CFA only IsMerge blocks should have multiple inbound edges
+        public bool IsLabeled { get; set; }
+
+        public int PostOrderI { get; set; } = -1;
+        public ASTBlock? ImmediatePreDominator { get; set; }
+        public IEnumerable<ASTBlock> PreDominators => Chain(b => b.ImmediatePreDominator);
+
+        /// <remarks>The post order of the reversed graph, not the reverse postorder of the original graph</remarks>
+        public int PostOrderRevI { get; set; } = -1;
+        public ASTBlock? ImmediatePostDominator { get; set; }
+        public IEnumerable<ASTBlock> PostDominators => Chain(b => b.ImmediatePostDominator);
+
+        private IEnumerable<ASTBlock> Chain(Func<ASTBlock, ASTBlock?> getNext)
+        {
+            ASTBlock? cur = this, next = getNext(this);
+            if (next == null)
+                yield break;
+            do
+            {
+                yield return next;
+                next = getNext(cur = next);
+            } while (next != null && next != cur);
+        }
+
+        public ASTBlock SplitBefore(ASTInstruction instruction) => SplitAfter(Instructions.IndexOf(instruction) - 1);
+        public ASTBlock SplitAfter(ASTInstruction instruction) => SplitAfter(Instructions.IndexOf(instruction));
+        public ASTBlock SplitAfter(int index)
+        {
+            if (index < 0 || index + 1 >= Instructions.Count)
+                throw new ArgumentOutOfRangeException("Invalid target for splitting ASTBlock");
+
+            var newBlock = new ASTNormalBlock()
+            {
+                Instructions = Instructions.Skip(index + 1).ToList(),
+                Outbound = Outbound.ToHashSet(),
+                InboundForward = new() { this }
+            };
+            foreach (var instr in newBlock.Instructions)
+                instr.Parent = newBlock;
+            Outbound.Clear();
+            Outbound.Add(newBlock);
+            Instructions.RemoveRange(index + 1, Instructions.Count - index - 1);
+            return newBlock;
+        }
 
         public override void ReplaceChild(ASTNode oldChild, ASTNode newChild)
         {
@@ -634,7 +707,56 @@ partial class ScriptDecompiler
 
         protected override void WriteToInternal(CodeWriter writer)
         {
-            Instructions.ForEach(i => i.WriteTo(writer));
+            var targetWriter = writer;
+            if (IsLabeled)
+            {
+                writer.WriteLine($"label {StartTotalOffset:D4}:");
+                targetWriter = writer.Indented;
+            }
+            Instructions.ForEach(i => i.WriteTo(targetWriter));
+        }
+
+        public override string ToString() => $"{GetType().Name} {StartTotalOffset} -> {EndTotalOffset}";
+    }
+
+    private class ASTNormalBlock : ASTBlock
+    {
+    }
+
+    private class ASTExitBlock : ASTBlock
+    {
+    }
+
+    private class ASTLoop : ASTBlock
+    {
+        public required bool IsPostCondition { get; init; }
+        public required ASTBlock Body { get; init; }
+        public HashSet<ASTBlock> Loop { get; init; } = new();
+
+        protected override void WriteToInternal(CodeWriter writer)
+        {
+            if (IsPostCondition)
+                writer.Write("do");
+            else
+                WriteCondition(writer);
+            writer.WriteLine(" {");
+            Body.WriteTo(writer.Indented);
+
+            if (IsPostCondition)
+            {
+                writer.Write("} ");
+                WriteCondition(writer);
+                writer.WriteLine();
+            }
+            else
+                writer.WriteLine("}");
+        }
+
+        private void WriteCondition(CodeWriter writer)
+        {
+            writer.WriteLine("while ({");
+            base.WriteToInternal(writer.Indented);
+            writer.Write("})");
         }
     }
 }

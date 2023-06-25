@@ -10,9 +10,11 @@ public partial class ScriptDecompiler
     private readonly byte[] script;
     private readonly int globalVarCount;
     private readonly ResourceFile resFile;
+    private readonly ASTExitBlock astExit = new ();
 
     private int nextTmpIndex = 0;
-    private ASTRoot astRoot = new();
+    private ASTBlock astEntry = new ASTNormalBlock();
+    private List<ASTBlock> allBlocks = new();
 
     public ScriptDecompiler(ReadOnlySpan<byte> script, ResourceFile resFile)
     {
@@ -27,12 +29,31 @@ public partial class ScriptDecompiler
         CreateInitialAST();
         TransformCalcLazyBooleans();
         TransformCalcReturns();
-        astRoot.WriteTo(codeWriter);
+
+        // Control flow analysis
+        CreateInitialBlocks();
+        SetOutboundEdges();
+        SetInboundEdges();
+        SetPostOrderNumber();
+        SetPostOrderRevNumber();
+        SetPreDominators();
+        SetPostDominators();
+        ConstructLoops();
+        ConstructSelections();
+        ConstructGotos();
+
+        WriteTo(codeWriter);
+    }
+
+    private void WriteTo(CodeWriter writer)
+    {
+        foreach (var block in allBlocks.Where(b => b.Parent == null).OrderBy(b => b.StartTotalOffset))
+            block.WriteTo(writer);
     }
 
     private void CreateInitialAST()
     {
-        astRoot = new();
+        astEntry = new ASTNormalBlock();
         var rootReader = new SpanReader(script);
         while (!rootReader.EndOfSpan)
         {
@@ -41,7 +62,7 @@ public partial class ScriptDecompiler
 
             var astInstruction = new ASTRootOpInstruction()
             {
-                Parent = astRoot.Parent,
+                Parent = astEntry.Parent,
                 RootInstruction = rootInstruction,
                 CalcBody = calcBody,
                 StartOwnOffset = rootInstruction.Offset,
@@ -49,7 +70,7 @@ public partial class ScriptDecompiler
             };
             astInstruction.FixChildrenParents();
 
-            astRoot.Instructions.Add(astInstruction);
+            astEntry.Instructions.Add(astInstruction);
         }
     }
 
