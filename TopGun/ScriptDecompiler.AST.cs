@@ -649,19 +649,20 @@ partial class ScriptDecompiler
             ContinueBlock == null ? Instructions : (Instructions as IEnumerable<ASTNode>).Append(ContinueBlock);
 
         public HashSet<ASTBlock> Outbound { get; init; } = new();
-        public HashSet<ASTBlock> InboundForward { get; init; } = new();
-        public HashSet<ASTBlock> InboundBackward { get; init; } = new();
+        public HashSet<ASTBlock> Inbound { get; init; } = new();
         public bool IsMerge { get; set; } // after CFA only IsMerge blocks should have multiple inbound edges
         public bool IsLabeled { get; set; }
 
         public int PostOrderI { get; set; } = -1;
         public ASTBlock? ImmediatePreDominator { get; set; }
         public IEnumerable<ASTBlock> PreDominators => Chain(b => b.ImmediatePreDominator);
+        public bool PreDominates(ASTBlock other) => other.PreDominators.Contains(this);
 
         /// <remarks>The post order of the reversed graph, not the reverse postorder of the original graph</remarks>
         public int PostOrderRevI { get; set; } = -1;
         public ASTBlock? ImmediatePostDominator { get; set; }
         public IEnumerable<ASTBlock> PostDominators => Chain(b => b.ImmediatePostDominator);
+        public bool PostDominates(ASTBlock other) => other.PostDominators.Contains(this);
 
         private IEnumerable<ASTBlock> Chain(Func<ASTBlock, ASTBlock?> getNext)
         {
@@ -686,7 +687,7 @@ partial class ScriptDecompiler
             {
                 Instructions = Instructions.Skip(index + 1).ToList(),
                 Outbound = Outbound.ToHashSet(),
-                InboundForward = new() { this }
+                Inbound = new() { this }
             };
             foreach (var instr in newBlock.Instructions)
                 instr.Parent = newBlock;

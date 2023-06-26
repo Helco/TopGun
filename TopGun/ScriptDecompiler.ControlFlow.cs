@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Text;
 
@@ -41,8 +42,8 @@ partial class ScriptDecompiler
             if (splittingOp.RootInstruction.Op != ScriptOp.JumpIf)
             {
                 // JumpIf is the only op with a default fallthrough, all else have explicit targets or break execution
-                curBlock.InboundForward.Single().Outbound.Clear();
-                curBlock.InboundForward.Clear();
+                curBlock.Inbound.Single().Outbound.Clear();
+                curBlock.Inbound.Clear();
             }
         }
     }
@@ -114,9 +115,7 @@ partial class ScriptDecompiler
                 continue;
             var child = edgeIt.Current;
 
-            (stack.Any(t => t.Item1 == child)
-                ? child.InboundBackward
-                : child.InboundForward).Add(parent);
+            child.Inbound.Add(parent);
 
             stack.Push((parent, edgeIt));
             if (!visited.Contains(child))
@@ -145,7 +144,7 @@ partial class ScriptDecompiler
         public ASTBlock? GetImmediateDominator(ASTBlock block) => block.ImmediatePreDominator;
         public void SetImmediateDominator(ASTBlock block, ASTBlock dominator) => block.ImmediatePreDominator = dominator;
         public IEnumerable<ASTBlock> GetOutbound(ASTBlock block) => block.Outbound;
-        public IEnumerable<ASTBlock> GetInbound(ASTBlock block) => block.InboundForward.Concat(block.InboundBackward);
+        public IEnumerable<ASTBlock> GetInbound(ASTBlock block) => block.Inbound;
     }
 
     private class BackwardBlockIterator : IBlockIterator
@@ -156,7 +155,7 @@ partial class ScriptDecompiler
         public void SetOrder(ASTBlock block, int order) => block.PostOrderRevI = order;
         public ASTBlock? GetImmediateDominator(ASTBlock block) => block.ImmediatePostDominator;
         public void SetImmediateDominator(ASTBlock block, ASTBlock dominator) => block.ImmediatePostDominator = dominator;
-        public IEnumerable<ASTBlock> GetOutbound(ASTBlock block) => block.InboundForward.Concat(block.InboundBackward);
+        public IEnumerable<ASTBlock> GetOutbound(ASTBlock block) => block.Inbound;
         public IEnumerable<ASTBlock> GetInbound(ASTBlock block) => block.Outbound;
     }
 
@@ -252,13 +251,61 @@ partial class ScriptDecompiler
         newBlock.ImmediatePreDominator = oldBlock.ImmediatePreDominator;
         newBlock.ImmediatePostDominator = oldBlock.ImmediatePostDominator;
         newBlock.Outbound.UnionWith(oldBlock.Outbound);
-        newBlock.InboundForward.UnionWith(oldBlock.InboundForward);
-        newBlock.InboundBackward.UnionWith(oldBlock.InboundBackward);
+        newBlock.Inbound.UnionWith(oldBlock.Inbound);
         newBlock.Parent = oldBlock.Parent;
     }
 
     private void ConstructLoops()
     {
+        var naturalLoops = new Dictionary<ASTBlock, HashSet<ASTBlock>>();
+        var backEdges = allBlocks.SelectMany(header => header.Inbound
+            .Where(bodyEnd => header.PreDominates(bodyEnd))
+            .Select(bodyEnd => (header, bodyEnd)));
+        foreach (var (header, bodyEnd) in backEdges)
+        {
+            var body = new HashSet<ASTBlock>() { bodyEnd };
+            foreach (var potentialBody in allBlocks.Where(header.PreDominates))
+                CheckAndMarkReachable(body, header, potentialBody);
+            if (!naturalLoops.TryAdd(header, body))
+                throw new NotSupportedException("Unsupported control flow with merged loops");
+        }
+
+        void CheckAndMarkReachable(HashSet<ASTBlock> body, ASTBlock header, ASTBlock start)
+        {
+            /*
+             * Using pre-order traversal. All blocks in body are reachable so all finish the search
+             * Additionally the stack contains a path with only reachable nodes so we add all of them
+             */
+            if (start == header)
+                return;
+            var visited = new HashSet<ASTBlock>(allBlocks.Count);
+            var stack = new Stack<(ASTBlock, IEnumerator<ASTBlock>)>();
+            stack.Push((start, start.Outbound.GetEnumerator()));
+            while (stack.Any())
+            {
+                var (parent, edgeIt) = stack.Pop();
+                visited.Add(parent);
+                if (!edgeIt.MoveNext())
+                    continue;
+                var child = edgeIt.Current;
+
+                if (body.Contains(child))
+                {
+                    // for weird control graphs not all blocks on our path are dominated by the header
+                    // so we check again. However all of them reach the backedge source.
+                    body.UnionWith(stack
+                        .Select(t => t.Item1)
+                        .Prepend(parent)
+                        .Prepend(child)
+                        .Where(header.PreDominates));
+                    return;
+                }
+
+                stack.Push((parent, edgeIt));
+                if (child != header && !visited.Contains(child))
+                    stack.Push((child, child.Outbound.GetEnumerator()));
+            }
+        }
     }
 
     private void ConstructSelections() { }
