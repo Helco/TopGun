@@ -255,9 +255,35 @@ partial class ScriptDecompiler
         newBlock.Parent = oldBlock.Parent;
     }
 
+    private class NaturalLoop
+    {
+        public NaturalLoop? Parent { get; set; }
+        public List<NaturalLoop> Children { get; } = new();
+        public required ASTBlock Header { get; init; }
+        public required HashSet<ASTBlock> Body { get; init; }
+
+        public static int DescendingSizeComparison(NaturalLoop a, NaturalLoop b) => b.Body.Count - a.Body.Count;
+
+        public void AddChild(NaturalLoop loop)
+        {
+            var parentChild = Children.SingleOrDefault(c => c.Body.Overlaps(loop.Body));
+            if (parentChild == null)
+            {
+                loop.Parent = this;
+                Children.Add(loop);
+                Children.Sort(DescendingSizeComparison);
+                return;
+            }
+            if (!parentChild.Body.IsSupersetOf(loop.Body))
+                throw new NotSupportedException("Unsupported control flow with overlapping, non-nested loop bodies");
+            parentChild.AddChild(loop);
+        }
+    }
+
     private void ConstructLoops()
     {
-        var naturalLoops = new Dictionary<ASTBlock, HashSet<ASTBlock>>();
+        var headers = new HashSet<ASTBlock>();
+        var sortedBySize = new List<NaturalLoop>();
         var backEdges = allBlocks.SelectMany(header => header.Inbound
             .Where(bodyEnd => header.PreDominates(bodyEnd))
             .Select(bodyEnd => (header, bodyEnd)));
@@ -266,17 +292,23 @@ partial class ScriptDecompiler
             var body = new HashSet<ASTBlock>() { bodyEnd };
             foreach (var potentialBody in allBlocks.Where(header.PreDominates))
                 CheckAndMarkReachable(body, header, potentialBody);
-            if (!naturalLoops.TryAdd(header, body))
+            body.Add(header);
+            
+            if (!headers.Add(header))
                 throw new NotSupportedException("Unsupported control flow with merged loops");
+            sortedBySize.Add(new()
+            {
+                Header = header,
+                Body = body
+            });
         }
+        sortedBySize.Sort(NaturalLoop.DescendingSizeComparison);
+        var rootLoops = ConstructHierarchy();
 
         void CheckAndMarkReachable(HashSet<ASTBlock> body, ASTBlock header, ASTBlock start)
         {
-            /*
-             * Using pre-order traversal. All blocks in body are reachable so all finish the search
-             * Additionally the stack contains a path with only reachable nodes so we add all of them
-             */
-            if (start == header)
+            // Using pre-order traversal.
+            if (start == header || body.Contains(start))
                 return;
             var visited = new HashSet<ASTBlock>(allBlocks.Count);
             var stack = new Stack<(ASTBlock, IEnumerator<ASTBlock>)>();
@@ -289,8 +321,10 @@ partial class ScriptDecompiler
                     continue;
                 var child = edgeIt.Current;
 
+                // All blocks in body are reachable so all finish the search
                 if (body.Contains(child))
                 {
+                    // the stack now contains a path with only reachable nodes so we add all of them
                     // for weird control graphs not all blocks on our path are dominated by the header
                     // so we check again. However all of them reach the backedge source.
                     body.UnionWith(stack
@@ -305,6 +339,18 @@ partial class ScriptDecompiler
                 if (child != header && !visited.Contains(child))
                     stack.Push((child, child.Outbound.GetEnumerator()));
             }
+        }
+
+        List<NaturalLoop> ConstructHierarchy()
+        {
+            var rootLoop = new NaturalLoop()
+            {
+                Header = null!,
+                Body = null!
+            };
+            sortedBySize.ForEach(rootLoop.AddChild);
+            rootLoop.Children.ForEach(c => c.Parent = null);
+            return rootLoop.Children;
         }
     }
 

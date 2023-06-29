@@ -733,6 +733,7 @@ partial class ScriptDecompiler
         public required bool IsPostCondition { get; init; }
         public required ASTBlock Body { get; init; }
         public HashSet<ASTBlock> Loop { get; init; } = new();
+        public override IEnumerable<ASTNode> Children => base.Children.Concat(Loop);
 
         protected override void WriteToInternal(CodeWriter writer)
         {
