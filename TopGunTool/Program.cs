@@ -5,6 +5,7 @@ using System.IO;
 using TopGun;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+using System.Text;
 
 namespace TopGunTool;
 

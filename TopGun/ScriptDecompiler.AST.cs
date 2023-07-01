@@ -633,20 +633,10 @@ partial class ScriptDecompiler
         }
     }
 
-    private enum BlockType
-    {
-        Normal,
-        Selection, // after CFA only Selection blocks should have multiple outbound edges
-        Loop, // after CFA only Loop blocks should have backward edges
-        Exit // should not have Outbound edges nor Instructions
-    }
-
     private abstract class ASTBlock : ASTNode
     {
-        public List<ASTInstruction> Instructions { get; init; } = new();
         public ASTBlock? ContinueBlock { get; set; } = null;
-        public override IEnumerable<ASTNode> Children =>
-            ContinueBlock == null ? Instructions : (Instructions as IEnumerable<ASTNode>).Append(ContinueBlock);
+        public override IEnumerable<ASTNode> Children => ContinueBlock == null ? Array.Empty<ASTNode>() : new[] { ContinueBlock };
 
         public HashSet<ASTBlock> Outbound { get; init; } = new();
         public HashSet<ASTBlock> Inbound { get; init; } = new();
@@ -676,9 +666,23 @@ partial class ScriptDecompiler
             } while (next != null && next != cur);
         }
 
-        public ASTBlock SplitBefore(ASTInstruction instruction) => SplitAfter(Instructions.IndexOf(instruction) - 1);
-        public ASTBlock SplitAfter(ASTInstruction instruction) => SplitAfter(Instructions.IndexOf(instruction));
-        public ASTBlock SplitAfter(int index)
+        public void AddOutbound(ASTBlock other)
+        {
+            Outbound.Add(other);
+            other.Inbound.Add(this);
+        }
+
+        public override string ToString() => $"{GetType().Name} {StartTotalOffset} -> {EndTotalOffset}";
+    }
+
+    private class ASTNormalBlock : ASTBlock
+    {
+        public List<ASTInstruction> Instructions { get; init; } = new();
+        public override IEnumerable<ASTNode> Children => base.Children.Concat(Instructions);
+
+        public ASTNormalBlock SplitBefore(ASTInstruction instruction) => SplitAfter(Instructions.IndexOf(instruction) - 1);
+        public ASTNormalBlock SplitAfter(ASTInstruction instruction) => SplitAfter(Instructions.IndexOf(instruction));
+        public ASTNormalBlock SplitAfter(int index)
         {
             if (index < 0 || index + 1 >= Instructions.Count)
                 throw new ArgumentOutOfRangeException("Invalid target for splitting ASTBlock");
@@ -691,6 +695,11 @@ partial class ScriptDecompiler
             };
             foreach (var instr in newBlock.Instructions)
                 instr.Parent = newBlock;
+            foreach (var outbound in Outbound)
+            {
+                outbound.Inbound.Remove(this);
+                outbound.Inbound.Add(newBlock);
+            }
             Outbound.Clear();
             Outbound.Add(newBlock);
             Instructions.RemoveRange(index + 1, Instructions.Count - index - 1);
@@ -716,21 +725,19 @@ partial class ScriptDecompiler
             }
             Instructions.ForEach(i => i.WriteTo(targetWriter));
         }
-
-        public override string ToString() => $"{GetType().Name} {StartTotalOffset} -> {EndTotalOffset}";
-    }
-
-    private class ASTNormalBlock : ASTBlock
-    {
     }
 
     private class ASTExitBlock : ASTBlock
     {
+        protected override void WriteToInternal(CodeWriter writer)
+        {
+        }
     }
 
     private class ASTLoop : ASTBlock
     {
         public required bool IsPostCondition { get; init; }
+        public required ASTBlock Condition { get; init; }
         public required ASTBlock Body { get; init; }
         public HashSet<ASTBlock> Loop { get; init; } = new();
         public override IEnumerable<ASTNode> Children => base.Children.Concat(Loop);
@@ -756,9 +763,12 @@ partial class ScriptDecompiler
 
         private void WriteCondition(CodeWriter writer)
         {
+            using var subWriter = writer.Indented;
             writer.WriteLine("while ({");
-            base.WriteToInternal(writer.Indented);
-            writer.Write("})");
+            Condition.WriteTo(subWriter);
+            writer.Write("}) {");
+            Body.WriteTo(subWriter);
+            writer.WriteLine();
         }
     }
 }

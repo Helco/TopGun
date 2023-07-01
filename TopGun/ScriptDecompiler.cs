@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 
 namespace TopGun;
 
@@ -10,7 +11,7 @@ public partial class ScriptDecompiler
     private readonly byte[] script;
     private readonly int globalVarCount;
     private readonly ResourceFile resFile;
-    private readonly ASTExitBlock astExit = new ();
+    private readonly ASTExitBlock astExit;
 
     private int nextTmpIndex = 0;
     private ASTBlock astEntry = new ASTNormalBlock();
@@ -20,6 +21,7 @@ public partial class ScriptDecompiler
     {
         this.script = script.ToArray();
         this.resFile = resFile;
+        astExit = new() { StartOwnOffset = script.Length, EndOwnOffset = script.Length };
         globalVarCount = 5118;
     }
 
@@ -32,8 +34,7 @@ public partial class ScriptDecompiler
 
         // Control flow analysis
         CreateInitialBlocks();
-        SetOutboundEdges();
-        SetInboundEdges();
+        SetBlockEdges();
         SetPostOrderNumber();
         SetPostOrderRevNumber();
         SetPreDominators();
@@ -53,7 +54,8 @@ public partial class ScriptDecompiler
 
     private void CreateInitialAST()
     {
-        astEntry = new ASTNormalBlock();
+        var astEntry = new ASTNormalBlock();
+        this.astEntry = astEntry;
         var rootReader = new SpanReader(script);
         while (!rootReader.EndOfSpan)
         {
@@ -68,10 +70,10 @@ public partial class ScriptDecompiler
                 StartOwnOffset = rootInstruction.Offset,
                 EndOwnOffset = rootInstruction.EndOffset
             };
-            astInstruction.FixChildrenParents();
 
             astEntry.Instructions.Add(astInstruction);
         }
+        astEntry.FixChildrenParents();
     }
 
     private List<ASTInstruction> CreateInitialCalcAST(ReadOnlySpan<byte> calcScript, int baseOffset)

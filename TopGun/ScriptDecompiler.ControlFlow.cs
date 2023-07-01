@@ -28,7 +28,9 @@ partial class ScriptDecompiler
         allBlocks.Clear();
         allBlocks.Add(astExit);
         allBlocks.Add(astEntry);
-        var curBlock = astEntry;
+        astEntry.AddOutbound(astExit); // implicit exit at end of script
+
+        var curBlock = (ASTNormalBlock)astEntry;
         while (true)
         {
             var splittingOp = curBlock.Instructions
@@ -48,78 +50,49 @@ partial class ScriptDecompiler
         }
     }
 
-    private void SetOutboundEdges()
+    private void SetBlockEdges()
     {
-        var edges = new List<(int fromOffset, int targetOffset)>()
-        {
-            (allBlocks.Last().Instructions.Last().StartTotalOffset, script.Length)
-        };
+        var instrByOffset = allBlocks
+            .OfType<ASTNormalBlock>()
+            .SelectMany(b => b.Instructions)
+            .OfType<ASTRootOpInstruction>()
+            .ToDictionary(i => i.StartTotalOffset, i => i);
 
-        foreach (var block in allBlocks.Skip(1)) // skip exit block
-        {
-            var instr = ((ASTRootOpInstruction)block.Instructions.Last()).RootInstruction;
-            if (instr.Op is ScriptOp.Return or ScriptOp.Exit)
-            {
-                SetEdge(block, astExit);
-                continue;
-            }
+        foreach (var instr in instrByOffset.Values.Where(i => i.RootInstruction.Op is ScriptOp.Return or ScriptOp.Exit))
+            ((ASTBlock)instr.Parent!).AddOutbound(astExit);
 
-            foreach (var arg in instr.Args.Where(a => a.Type == ScriptRootInstruction.ArgType.InstructionOffset))
-                edges.Add((instr.Offset, instr.Offset + arg.Value));
-        }
+        var edges = instrByOffset.Values.SelectMany(instr => instr.RootInstruction.Args
+            .Where(a => a.Type == ScriptRootInstruction.ArgType.InstructionOffset)
+            .Select(arg => (instr.StartTotalOffset, instr.StartTotalOffset + arg.Value)));
+        foreach (var (from, to) in edges)
+            FindBlockEndingWith(from).AddOutbound(FindBlockStartingWith(to));
 
-        foreach (var (from, targetOffset) in edges)
-            SetEdge(FindBlockAt(from, false), FindBlockAt(targetOffset, true));
-
-        void SetEdge(ASTBlock from, ASTBlock to)
-        {
-            from.Outbound.Add(to);
-        }
-
-        ASTBlock FindBlockAt(int offset, bool split)
+        (ASTBlock, ASTRootOpInstruction) FindInstructionAt(int offset)
         {
             if (offset == script.Length)
-                return astExit;
-            else if (offset < 0 || offset > script.Length)
-                throw new ArgumentOutOfRangeException(nameof(offset), "Invalid target offset, outside of script range");
-
-            foreach (var block in allBlocks)
-            {
-                var instruction = block.Instructions.FirstOrDefault(i => i.StartTotalOffset == offset);
-                if (instruction == null)
-                    continue;
-                else if (block.Instructions.First() == instruction)
-                    return block;
-                else if (!split && block.Instructions.Last() == instruction)
-                    return block;
-                var newBlock = block.SplitBefore(instruction);
-                allBlocks.Add(newBlock);
-                return newBlock;
-            }
-
-            throw new ArgumentException("Invalid target offset, does not point to root instruction");
+                return (astExit, null!);
+            else if (!instrByOffset.TryGetValue(offset, out var instr))
+                throw new ArgumentException("Invalid offset to instruction");
+            else
+                return ((ASTBlock)instr.Parent!, instr);
         }
-    }
 
-    /// <remarks>Using depth-first traversal, pre-order</remarks>
-    private void SetInboundEdges()
-    {
-        var visited = new HashSet<ASTBlock>(allBlocks.Count);
-        var stack = new Stack<(ASTBlock, IEnumerator<ASTBlock>)>();
-        stack.Push((astEntry, astEntry.Outbound.GetEnumerator()));
-        while (stack.Any())
+        ASTBlock FindBlockStartingWith(int offset)
         {
-            var (parent, edgeIt) = stack.Pop();
-            visited.Add(parent);
-            if (!edgeIt.MoveNext())
-                continue;
-            var child = edgeIt.Current;
+            var (block, instr) = FindInstructionAt(offset);
+            if (block.StartTotalOffset == offset)
+                return block;
+            var newBlock = ((ASTNormalBlock)block).SplitBefore(instr);
+            allBlocks.Add(newBlock);
+            return newBlock;
+        }
 
-            child.Inbound.Add(parent);
-
-            stack.Push((parent, edgeIt));
-            if (!visited.Contains(child))
-                stack.Push((child, child.Outbound.GetEnumerator()));
+        ASTBlock FindBlockEndingWith(int offset)
+        {
+            var (block, instr) = FindInstructionAt(offset);
+            if (((ASTNormalBlock)block).Instructions.Last() != instr)
+                throw new Exception("Splitting went wrong, source is not at end of block");
+            return block;
         }
     }
 
@@ -358,10 +331,10 @@ partial class ScriptDecompiler
 
     private void ConstructGotos()
     {
-        foreach (var block in allBlocks)
+        foreach (var block in allBlocks.OfType<ASTNormalBlock>())
         {
 
-            if (block is not ASTNormalBlock || block.Instructions.Last() is not ASTRootOpInstruction rootInstr)
+            if (block.Instructions.Last() is not ASTRootOpInstruction rootInstr)
                 continue;
 
             int target = block.EndTotalOffset;

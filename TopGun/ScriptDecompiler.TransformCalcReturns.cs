@@ -45,7 +45,7 @@ partial class ScriptDecompiler
          * replaces the declaration with a return instruction.
          */
 
-        foreach (ASTRootOpInstruction instr in astEntry.Instructions)
+        foreach (ASTRootOpInstruction instr in ((ASTNormalBlock)astEntry).Instructions)
         {
             var mode = GetCalcInRootMode(instr.RootInstruction.Op);
             if (mode == CalcInRootMode.ShouldNotExist && instr.CalcBody.Any())
