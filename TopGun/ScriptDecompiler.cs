@@ -39,17 +39,20 @@ public partial class ScriptDecompiler
         SetPostOrderRevNumber();
         SetPreDominators();
         SetPostDominators();
-        ConstructLoops();
+        var loops = DetectLoops();
+        ConstructLoops(loops);
         ConstructSelections();
         ConstructGotos();
+        ConstructSimpleContinues();
 
         WriteTo(codeWriter);
     }
 
     private void WriteTo(CodeWriter writer)
     {
-        foreach (var block in allBlocks.Where(b => b.Parent == null).OrderBy(b => b.StartTotalOffset))
-            block.WriteTo(writer);
+        astEntry.WriteTo(writer);
+        /*foreach (var block in allBlocks.Where(b => b.Parent == null).OrderBy(b => b.StartTotalOffset))
+            block.WriteTo(writer);*/
     }
 
     private void CreateInitialAST()

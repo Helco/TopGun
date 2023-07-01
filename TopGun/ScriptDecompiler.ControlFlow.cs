@@ -28,7 +28,9 @@ partial class ScriptDecompiler
         allBlocks.Clear();
         allBlocks.Add(astExit);
         allBlocks.Add(astEntry);
-        astEntry.AddOutbound(astExit); // implicit exit at end of script
+
+        if (((ASTNormalBlock)astEntry).Instructions.Last().HasFallthrough)
+            astEntry.AddOutbound(astExit); // implicit exit at end of script
 
         var curBlock = (ASTNormalBlock)astEntry;
         while (true)
@@ -234,6 +236,22 @@ partial class ScriptDecompiler
         public List<NaturalLoop> Children { get; } = new();
         public required ASTBlock Header { get; init; }
         public required HashSet<ASTBlock> Body { get; init; }
+        public IEnumerable<NaturalLoop> AllLoops => Children.Prepend(this);
+
+        public int Rank
+        {
+            get 
+            {
+                int rank = 0;
+                var cur = this;
+                while(cur != null)
+                {
+                    rank++;
+                    cur = cur.Parent;
+                }
+                return rank;
+            }
+        }
 
         public static int DescendingSizeComparison(NaturalLoop a, NaturalLoop b) => b.Body.Count - a.Body.Count;
 
@@ -253,7 +271,7 @@ partial class ScriptDecompiler
         }
     }
 
-    private void ConstructLoops()
+    private List<NaturalLoop> DetectLoops()
     {
         var headers = new HashSet<ASTBlock>();
         var sortedBySize = new List<NaturalLoop>();
@@ -275,8 +293,17 @@ partial class ScriptDecompiler
                 Body = body
             });
         }
+        
+        // Construct hierarchy by using a dummy "root-of-roots" loop
+        var rootLoop = new NaturalLoop()
+        {
+            Header = null!,
+            Body = null!
+        };
         sortedBySize.Sort(NaturalLoop.DescendingSizeComparison);
-        var rootLoops = ConstructHierarchy();
+        sortedBySize.ForEach(rootLoop.AddChild);
+        rootLoop.Children.ForEach(c => c.Parent = null);
+        return rootLoop.Children;
 
         void CheckAndMarkReachable(HashSet<ASTBlock> body, ASTBlock header, ASTBlock start)
         {
@@ -313,17 +340,53 @@ partial class ScriptDecompiler
                     stack.Push((child, child.Outbound.GetEnumerator()));
             }
         }
+    }
 
-        List<NaturalLoop> ConstructHierarchy()
+    private void ConstructLoops(IReadOnlyList<NaturalLoop> rootLoops)
+    {
+        var allLoops = rootLoops.SelectMany(l => l.AllLoops).OrderByDescending(l => l.Rank);
+        foreach (var loop in allLoops)
         {
-            var rootLoop = new NaturalLoop()
+            var backTarget = loop.Header;
+            var targetInbounds = backTarget.Inbound.ToArray();
+            var targetOutbounds = backTarget.Outbound.ToArray();
+            if (targetInbounds.Length != 2 || targetOutbounds.Length != 2)
+                throw new NotSupportedException("Loop with unexpected structure, header has not two inbound and two outbound blocks");
+
+            var backSource = loop.Body.Contains(targetInbounds[0]) ? targetInbounds[0] : targetInbounds[1];
+            var externalInbound = backSource == targetInbounds[0] ? targetInbounds[1] : targetInbounds[0];
+            if (!loop.Body.Contains(backSource) || loop.Body.Contains(externalInbound))
+                throw new NotSupportedException("Loop with unexpected structure, header inbounds are not supported");
+
+            if (backSource.Outbound.Count != 1)
+                throw new NotSupportedException("Loop with unexpected structure, back-edge block is branching");
+            backSource.NeedsExplicitControlFlow = false;
+            var jumpBackInstr = ((ASTNormalBlock)backSource).Instructions.RemoveLast();
+            if ((jumpBackInstr as ASTRootOpInstruction)?.RootInstruction.Op != ScriptOp.Jump)
+                throw new NotSupportedException("Should the back-edge source block not end with an unconditional jump?");
+            
+            var loopEntry = loop.Body.Contains(targetOutbounds[0]) ? targetOutbounds[0] : targetOutbounds[1];
+            var externalOutbound = loopEntry == targetOutbounds[0] ? targetOutbounds[1] : targetOutbounds[0];
+            if (!loop.Body.Contains(loopEntry) || loop.Body.Contains(externalOutbound))
+                throw new NotSupportedException("Loop with unexpected structure, header outbounds are not supported");
+
+            var astLoop = new ASTLoop()
             {
-                Header = null!,
-                Body = null!
+                IsPostCondition = false,
+                Condition = backTarget,
+                Body = loopEntry,
+                Loop = loop.Body,
+                ContinueBlock = externalOutbound
             };
-            sortedBySize.ForEach(rootLoop.AddChild);
-            rootLoop.Children.ForEach(c => c.Parent = null);
-            return rootLoop.Children;
+            foreach (var block in loop.Body)
+                block.Parent = astLoop;
+            allBlocks.Add(astLoop);
+
+            if (loop.Parent != null)
+            {
+                loop.Parent.Body.ExceptWith(loop.Body);
+                loop.Parent.Body.Add(astLoop);
+            }
         }
     }
 
@@ -334,7 +397,8 @@ partial class ScriptDecompiler
         foreach (var block in allBlocks.OfType<ASTNormalBlock>())
         {
 
-            if (block.Instructions.Last() is not ASTRootOpInstruction rootInstr)
+            if (block.Instructions.LastOrDefault() is not ASTRootOpInstruction rootInstr ||
+                !block.NeedsExplicitControlFlow)
                 continue;
 
             int target = block.EndTotalOffset;
@@ -368,6 +432,18 @@ partial class ScriptDecompiler
                 addInstr.EndOwnOffset = rootInstr.EndTotalOffset;
             }
             block.Instructions.Add(addInstr);
+        }
+    }
+
+    private void ConstructSimpleContinues()
+    {
+        foreach (var block in allBlocks.OfType<ASTNormalBlock>())
+        {
+            if (block.ContinueBlock != null ||
+                !block.NeedsExplicitControlFlow ||
+                !block.Instructions.Last().HasFallthrough)
+                continue;
+            block.ContinueBlock = allBlocks.FirstOrDefault(b => b.Parent == block.Parent && b.StartTotalOffset == block.EndTotalOffset);
         }
     }
 }

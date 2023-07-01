@@ -73,7 +73,7 @@ partial class ScriptDecompiler
             }
         }
 
-        public void WriteTo(CodeWriter writer)
+        public virtual void WriteTo(CodeWriter writer)
         {
             StartTextPosition = writer.Position;
             WriteToInternal(writer);
@@ -110,13 +110,19 @@ partial class ScriptDecompiler
         }
     }
 
-    private abstract class ASTInstruction : ASTNode { }
+    private abstract class ASTInstruction : ASTNode
+    {
+        public virtual bool HasFallthrough => true;
+    }
 
     private class ASTRootOpInstruction : ASTInstruction
     {
         public ScriptRootInstruction RootInstruction { get; init; }
         public List<ASTInstruction> CalcBody { get; set; } = new();
         public override IEnumerable<ASTNode> Children => CalcBody;
+        public override bool HasFallthrough => !SplittingOps
+            .Except(new[] { ScriptOp.JumpIf })
+            .Contains(RootInstruction.Op);
 
         public override void ReplaceChild(ASTNode oldChild, ASTNode newChild)
         {
@@ -601,6 +607,7 @@ partial class ScriptDecompiler
     {
         public ASTExpression? Value { get; set; }
         public override IEnumerable<ASTNode> Children => Value == null ? Array.Empty<ASTNode>() : new[] { Value };
+        public override bool HasFallthrough => false;
 
         public override void ReplaceChild(ASTNode oldChild, ASTNode newChild)
         {
@@ -626,6 +633,7 @@ partial class ScriptDecompiler
     private class ASTGoto : ASTInstruction
     {
         public required int Target { get; set; }
+        public override bool HasFallthrough => false;
 
         protected override void WriteToInternal(CodeWriter writer)
         {
@@ -640,7 +648,7 @@ partial class ScriptDecompiler
 
         public HashSet<ASTBlock> Outbound { get; init; } = new();
         public HashSet<ASTBlock> Inbound { get; init; } = new();
-        public bool IsMerge { get; set; } // after CFA only IsMerge blocks should have multiple inbound edges
+        public bool NeedsExplicitControlFlow { get; set; } = true; // e.g. inner last blocks of loops and selections do not need fallthrough nor goto
         public bool IsLabeled { get; set; }
 
         public int PostOrderI { get; set; } = -1;
@@ -670,6 +678,12 @@ partial class ScriptDecompiler
         {
             Outbound.Add(other);
             other.Inbound.Add(this);
+        }
+
+        public override void WriteTo(CodeWriter writer)
+        {
+            base.WriteTo(writer);
+            ContinueBlock?.WriteTo(writer);
         }
 
         public override string ToString() => $"{GetType().Name} {StartTotalOffset} -> {EndTotalOffset}";
@@ -744,31 +758,24 @@ partial class ScriptDecompiler
 
         protected override void WriteToInternal(CodeWriter writer)
         {
-            if (IsPostCondition)
-                writer.Write("do");
-            else
-                WriteCondition(writer);
-            writer.WriteLine(" {");
-            Body.WriteTo(writer.Indented);
+            using var subWriter = writer.Indented;
 
             if (IsPostCondition)
             {
-                writer.Write("} ");
-                WriteCondition(writer);
-                writer.WriteLine();
+                writer.WriteLine("do {");
+                Body.WriteTo(subWriter);
+                writer.WriteLine("} while({");
+                Condition.WriteTo(subWriter);
+                writer.WriteLine("}");
             }
             else
+            {
+                writer.WriteLine("while ({");
+                Condition.WriteTo(subWriter);
+                writer.Write("}) {");
+                Body.WriteTo(subWriter);
                 writer.WriteLine("}");
-        }
-
-        private void WriteCondition(CodeWriter writer)
-        {
-            using var subWriter = writer.Indented;
-            writer.WriteLine("while ({");
-            Condition.WriteTo(subWriter);
-            writer.Write("}) {");
-            Body.WriteTo(subWriter);
-            writer.WriteLine();
+            }
         }
     }
 }
