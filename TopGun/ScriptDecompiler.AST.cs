@@ -764,7 +764,7 @@ partial class ScriptDecompiler
         public required ASTBlock Body { get; init; }
         public HashSet<ASTBlock> Loop { get; init; } = new();
         public override IEnumerable<ASTNode> Children => base.Children.Concat(Loop);
-        public override bool CanFallthrough => true;
+        public override bool CanFallthrough => false;
 
         protected override void WriteToInternal(CodeWriter writer)
         {
@@ -798,7 +798,7 @@ partial class ScriptDecompiler
         public required ASTBlock? Else { get; init; }
         public override IEnumerable<ASTNode> Children =>
             base.Children.Concat(new[] { Prefix, Condition, Then, Else }.Where(n => n != null))!;
-        public override bool CanFallthrough => true;
+        public override bool CanFallthrough => false;
 
         protected override void WriteToInternal(CodeWriter writer)
         {

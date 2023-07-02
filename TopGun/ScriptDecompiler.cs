@@ -36,12 +36,11 @@ public partial class ScriptDecompiler
         CreateInitialBlocks();
         SetBlockEdges();
 
-        foreach (var block in blocksByOffset.Values)
+        /*foreach (var block in blocksByOffset.Values)
         {
-            
             foreach (var outBlock in block.Outbound)
                 Console.WriteLine($"{block.StartTotalOffset} -> {outBlock.StartTotalOffset};");
-        }
+        }*/
 
         SetPostOrderNumber();
         SetPostOrderRevNumber();
@@ -56,7 +55,7 @@ public partial class ScriptDecompiler
 
         WriteTo(codeWriter);
 
-        var unwrittenBlocks = blocksByOffset.Values.Where(b => b.StartTextPosition == default && b.EndTextPosition == default);
+        var unwrittenBlocks = blocksByOffset.Values.Where(b => b is not ASTExitBlock && b.StartTextPosition == default && b.EndTextPosition == default);
         if (unwrittenBlocks.Any())
             throw new Exception($"Detected unwritten blocks ({string.Join(", ", unwrittenBlocks)}), something went wrong");
     }

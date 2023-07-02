@@ -476,6 +476,7 @@ partial class ScriptDecompiler
             Condition = selection.Header,
             Then = thenBlock,
             Else = elseBlock,
+            ContinueBlock = selection.Merge,
             StartOwnOffset = selection.Header.StartTotalOffset,
             EndOwnOffset = selection.Header.EndTotalOffset
         };
@@ -534,6 +535,7 @@ partial class ScriptDecompiler
             Condition = astCondition,
             Then = thenBlock,
             Else = null,
+            ContinueBlock = selection.Merge,
             StartOwnOffset = header.StartTotalOffset,
             EndOwnOffset = header.EndTotalOffset
         };
