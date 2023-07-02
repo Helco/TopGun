@@ -15,7 +15,7 @@ public partial class ScriptDecompiler
 
     private int nextTmpIndex = 0;
     private ASTBlock astEntry = new ASTNormalBlock();
-    private List<ASTBlock> allBlocks = new();
+    private Dictionary<int, ASTBlock> blocksByOffset = new();
 
     public ScriptDecompiler(ReadOnlySpan<byte> script, ResourceFile resFile)
     {
@@ -35,17 +35,30 @@ public partial class ScriptDecompiler
         // Control flow analysis
         CreateInitialBlocks();
         SetBlockEdges();
+
+        foreach (var block in blocksByOffset.Values)
+        {
+            
+            foreach (var outBlock in block.Outbound)
+                Console.WriteLine($"{block.StartTotalOffset} -> {outBlock.StartTotalOffset};");
+        }
+
         SetPostOrderNumber();
         SetPostOrderRevNumber();
         SetPreDominators();
         SetPostDominators();
         var loops = DetectLoops();
         ConstructLoops(loops);
-        ConstructSelections();
+        var selections = DetectSelections();
+        ConstructSelections(selections);
         ConstructGotos();
-        ConstructSimpleContinues();
+        ConstructContinues();
 
         WriteTo(codeWriter);
+
+        var unwrittenBlocks = blocksByOffset.Values.Where(b => b.StartTextPosition == default && b.EndTextPosition == default);
+        if (unwrittenBlocks.Any())
+            throw new Exception($"Detected unwritten blocks ({string.Join(", ", unwrittenBlocks)}), something went wrong");
     }
 
     private void WriteTo(CodeWriter writer)
@@ -283,5 +296,49 @@ public partial class ScriptDecompiler
             entry.Finalize(nextTmpIndex++);
             finalizeOutput.Add(entry);
         }
+    }
+
+    private ASTExpression ExpressionFromRootArg(ScriptRootInstruction.Arg arg) => arg.Type switch
+    {
+        ScriptRootInstruction.ArgType.Value => new ASTImmediate() { Value = arg.Value},
+        ScriptRootInstruction.ArgType.Indirect when arg.Value < globalVarCount => new ASTGlobalVarValue() { Index = arg.Value },
+        ScriptRootInstruction.ArgType.Indirect => new ASTLocalVarValue() { Index = arg.Value - globalVarCount },
+        _ => throw new NotSupportedException("Unsupported root argument for conversion to AST expression")
+    };
+
+    private ASTExpression ExpressionFromConditionOp(ScriptRootInstruction.Arg leftArg, ScriptRootInstruction.Arg rightArg, ScriptRootConditionOp op, bool negateByInstruction)
+    {
+        BinaryOp? binary = null;
+        var shouldNegate = negateByInstruction;
+        if (op.HasFlag(ScriptRootConditionOp.Negate))
+            shouldNegate = !shouldNegate;
+
+        if (op.HasFlag(ScriptRootConditionOp.Equals))
+            (binary, shouldNegate) = (shouldNegate ? BinaryOp.NotEquals : BinaryOp.Equals, false);
+        else if (op.HasFlag(ScriptRootConditionOp.Greater))
+            (binary, shouldNegate) = (shouldNegate ? BinaryOp.LessOrEquals : BinaryOp.Greater, false);
+        else if (op.HasFlag(ScriptRootConditionOp.Lesser))
+            (binary, shouldNegate) = (shouldNegate ? BinaryOp.GreaterOrEquals : BinaryOp.Lesser, false);
+        else if (op.HasFlag(ScriptRootConditionOp.Or))
+            binary = BinaryOp.BitOr;
+        else if (op.HasFlag(ScriptRootConditionOp.And))
+            binary = BinaryOp.BitAnd;
+        else if (op.HasFlag(ScriptRootConditionOp.Modulo))
+            binary = BinaryOp.Modulo;
+        // ignoring NotZero as no op is necessary
+
+        var expr = binary == null ? ExpressionFromRootArg(leftArg) : new ASTBinary()
+        {
+            Left = new(ExpressionFromRootArg(leftArg), -1),
+            Right = new(ExpressionFromRootArg(rightArg), -1),
+            Op = binary.Value
+        };
+        if (shouldNegate)
+            expr = new ASTUnary()
+            {
+                Value = new(expr, -1),
+                Op = UnaryOp.BooleanNot
+            };
+        return expr;
     }
 }

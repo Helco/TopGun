@@ -112,7 +112,7 @@ partial class ScriptDecompiler
 
     private abstract class ASTInstruction : ASTNode
     {
-        public virtual bool HasFallthrough => true;
+        public virtual bool CanFallthough => true;
     }
 
     private class ASTRootOpInstruction : ASTInstruction
@@ -120,7 +120,7 @@ partial class ScriptDecompiler
         public ScriptRootInstruction RootInstruction { get; init; }
         public List<ASTInstruction> CalcBody { get; set; } = new();
         public override IEnumerable<ASTNode> Children => CalcBody;
-        public override bool HasFallthrough => !SplittingOps
+        public override bool CanFallthough => !SplittingOps
             .Except(new[] { ScriptOp.JumpIf })
             .Contains(RootInstruction.Op);
 
@@ -607,7 +607,7 @@ partial class ScriptDecompiler
     {
         public ASTExpression? Value { get; set; }
         public override IEnumerable<ASTNode> Children => Value == null ? Array.Empty<ASTNode>() : new[] { Value };
-        public override bool HasFallthrough => false;
+        public override bool CanFallthough => false;
 
         public override void ReplaceChild(ASTNode oldChild, ASTNode newChild)
         {
@@ -633,7 +633,7 @@ partial class ScriptDecompiler
     private class ASTGoto : ASTInstruction
     {
         public required int Target { get; set; }
-        public override bool HasFallthrough => false;
+        public override bool CanFallthough => false;
 
         protected override void WriteToInternal(CodeWriter writer)
         {
@@ -648,7 +648,8 @@ partial class ScriptDecompiler
 
         public HashSet<ASTBlock> Outbound { get; init; } = new();
         public HashSet<ASTBlock> Inbound { get; init; } = new();
-        public bool NeedsExplicitControlFlow { get; set; } = true; // e.g. inner last blocks of loops and selections do not need fallthrough nor goto
+        public abstract bool CanFallthrough { get; }
+        public bool ConstructProvidesControlFlow { get; set; } = false;
         public bool IsLabeled { get; set; }
 
         public int PostOrderI { get; set; } = -1;
@@ -693,6 +694,8 @@ partial class ScriptDecompiler
     {
         public List<ASTInstruction> Instructions { get; init; } = new();
         public override IEnumerable<ASTNode> Children => base.Children.Concat(Instructions);
+        public bool LastInstructionIsRedundantControlFlow { get; set; } = false;
+        public override bool CanFallthrough => Instructions.Last().CanFallthough;
 
         public ASTNormalBlock SplitBefore(ASTInstruction instruction) => SplitAfter(Instructions.IndexOf(instruction) - 1);
         public ASTNormalBlock SplitAfter(ASTInstruction instruction) => SplitAfter(Instructions.IndexOf(instruction));
@@ -737,12 +740,18 @@ partial class ScriptDecompiler
                 writer.WriteLine($"label {StartTotalOffset:D4}:");
                 targetWriter = writer.Indented;
             }
-            Instructions.ForEach(i => i.WriteTo(targetWriter));
+            var instructions = LastInstructionIsRedundantControlFlow
+                ? Instructions.SkipLast(1)
+                : Instructions;
+            foreach (var instruction in instructions)
+                instruction.WriteTo(targetWriter);
         }
     }
 
     private class ASTExitBlock : ASTBlock
     {
+        public override bool CanFallthrough => false;
+
         protected override void WriteToInternal(CodeWriter writer)
         {
         }
@@ -755,6 +764,7 @@ partial class ScriptDecompiler
         public required ASTBlock Body { get; init; }
         public HashSet<ASTBlock> Loop { get; init; } = new();
         public override IEnumerable<ASTNode> Children => base.Children.Concat(Loop);
+        public override bool CanFallthrough => true;
 
         protected override void WriteToInternal(CodeWriter writer)
         {
@@ -776,6 +786,39 @@ partial class ScriptDecompiler
                 Body.WriteTo(subWriter);
                 writer.WriteLine("}");
             }
+        }
+    }
+
+    private class ASTIfElse : ASTBlock
+    {
+        // for JumpIf Condition is formed by args with potential instructions before the jump
+        public ASTBlock? Prefix { get; init; }
+        public required ASTBlock Condition { get; init; }
+        public required ASTBlock? Then { get; init; }
+        public required ASTBlock? Else { get; init; }
+        public override IEnumerable<ASTNode> Children =>
+            base.Children.Concat(new[] { Prefix, Condition, Then, Else }.Where(n => n != null))!;
+        public override bool CanFallthrough => true;
+
+        protected override void WriteToInternal(CodeWriter writer)
+        {
+            using var subWriter = writer.Indented;
+            Prefix?.WriteTo(writer);
+            writer.WriteLine("if ({");
+            Condition.WriteTo(subWriter);
+            writer.WriteLine("} then {");
+            if (Then == null)
+                subWriter.WriteLine("// nothing");
+            else
+                Then.WriteTo(subWriter);
+            if (Else == null)
+            {
+                writer.WriteLine("}");
+                return;
+            }
+            writer.WriteLine("} else {");
+            Else.WriteTo(subWriter);
+            writer.WriteLine("}");
         }
     }
 }

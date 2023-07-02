@@ -25,11 +25,11 @@ partial class ScriptDecompiler
 
     private void CreateInitialBlocks()
     {
-        allBlocks.Clear();
-        allBlocks.Add(astExit);
-        allBlocks.Add(astEntry);
+        blocksByOffset.Clear();
+        blocksByOffset.Add(astExit.StartTotalOffset, astExit);
+        blocksByOffset.Add(0, astEntry);
 
-        if (((ASTNormalBlock)astEntry).Instructions.Last().HasFallthrough)
+        if (((ASTNormalBlock)astEntry).Instructions.Last().CanFallthough)
             astEntry.AddOutbound(astExit); // implicit exit at end of script
 
         var curBlock = (ASTNormalBlock)astEntry;
@@ -41,7 +41,7 @@ partial class ScriptDecompiler
             if (splittingOp == null || splittingOp == curBlock.Instructions.Last())
                 break;
             curBlock = curBlock.SplitAfter(splittingOp);
-            allBlocks.Add(curBlock);
+            blocksByOffset.Add(curBlock.StartTotalOffset, curBlock);
 
             if (splittingOp.RootInstruction.Op != ScriptOp.JumpIf)
             {
@@ -50,11 +50,15 @@ partial class ScriptDecompiler
                 curBlock.Inbound.Clear();
             }
         }
+
+        // to preserve debug info when cleared during transformations
+        foreach (var block in blocksByOffset.Values)
+            block.StartOwnOffset = block.EndOwnOffset = block.StartTotalOffset;
     }
 
     private void SetBlockEdges()
     {
-        var instrByOffset = allBlocks
+        var instrByOffset = blocksByOffset.Values
             .OfType<ASTNormalBlock>()
             .SelectMany(b => b.Instructions)
             .OfType<ASTRootOpInstruction>()
@@ -85,7 +89,7 @@ partial class ScriptDecompiler
             if (block.StartTotalOffset == offset)
                 return block;
             var newBlock = ((ASTNormalBlock)block).SplitBefore(instr);
-            allBlocks.Add(newBlock);
+            blocksByOffset.Add(newBlock.StartTotalOffset, newBlock);
             return newBlock;
         }
 
@@ -140,7 +144,7 @@ partial class ScriptDecompiler
     /// <remarks>Using depth-first traversal, post-order</remarks>
     private void SetPostOrder(IBlockIterator it)
     {
-        var visited = new HashSet<ASTBlock>(allBlocks.Count);
+        var visited = new HashSet<ASTBlock>(blocksByOffset.Count);
         var stack = new Stack<(ASTBlock, IEnumerator<ASTBlock>)>();
         stack.Push((it.Start, it.GetOutbound(it.Start).GetEnumerator()));
         int next = 0;
@@ -166,7 +170,7 @@ partial class ScriptDecompiler
     /// <remarks>Cooper, Harvey, Kennedy - "A Simple, Fast Dominance Algorithm"</remarks>
     private void SetDominators(IBlockIterator it)
     {
-        var revOrderBlocks = allBlocks
+        var revOrderBlocks = blocksByOffset.Values
             .Except(new[] { it.Start })
             .OrderByDescending(it.GetOrder)
             .ToArray();
@@ -216,27 +220,12 @@ partial class ScriptDecompiler
         }
     }
 
-    private void ReplaceBlockWith(ASTBlock oldBlock, ASTBlock newBlock)
+    private class GroupingConstruct<T> where T : GroupingConstruct<T>, new()
     {
-        var blockIndex = allBlocks.IndexOf(oldBlock);
-        if (blockIndex < 0)
-            throw new ArgumentOutOfRangeException(nameof(oldBlock), "Cannot replace invalid block");
-        newBlock.PostOrderI = oldBlock.PostOrderI;
-        newBlock.PostOrderRevI = oldBlock.PostOrderRevI;
-        newBlock.ImmediatePreDominator = oldBlock.ImmediatePreDominator;
-        newBlock.ImmediatePostDominator = oldBlock.ImmediatePostDominator;
-        newBlock.Outbound.UnionWith(oldBlock.Outbound);
-        newBlock.Inbound.UnionWith(oldBlock.Inbound);
-        newBlock.Parent = oldBlock.Parent;
-    }
-
-    private class NaturalLoop
-    {
-        public NaturalLoop? Parent { get; set; }
-        public List<NaturalLoop> Children { get; } = new();
-        public required ASTBlock Header { get; init; }
-        public required HashSet<ASTBlock> Body { get; init; }
-        public IEnumerable<NaturalLoop> AllLoops => Children.Prepend(this);
+        public T? Parent { get; set; }
+        public List<T> Children { get; } = new();
+        public HashSet<ASTBlock> Body { get; init; } = new();
+        public IEnumerable<T> AllChildren => Children.SelectMany(c => c.AllChildren).Prepend((T)this);
 
         public int Rank
         {
@@ -253,98 +242,112 @@ partial class ScriptDecompiler
             }
         }
 
-        public static int DescendingSizeComparison(NaturalLoop a, NaturalLoop b) => b.Body.Count - a.Body.Count;
+        public static int DescendingSizeComparison(T a, T b) => b.Body.Count - a.Body.Count;
 
-        public void AddChild(NaturalLoop loop)
+        public void AddChild(T child)
         {
-            var parentChild = Children.SingleOrDefault(c => c.Body.Overlaps(loop.Body));
+            var parentChild = Children.SingleOrDefault(c => c.Body.Overlaps(child.Body));
             if (parentChild == null)
             {
-                loop.Parent = this;
-                Children.Add(loop);
+                child.Parent = (T)this;
+                Children.Add(child);
                 Children.Sort(DescendingSizeComparison);
                 return;
             }
-            if (!parentChild.Body.IsSupersetOf(loop.Body))
-                throw new NotSupportedException("Unsupported control flow with overlapping, non-nested loop bodies");
-            parentChild.AddChild(loop);
+            if (!parentChild.Body.IsSupersetOf(child.Body))
+                throw new NotSupportedException("Unsupported control flow with overlapping, non-nested construct bodies");
+            parentChild.AddChild(child);
         }
+
+        public static List<T> CreateHierarchy(List<T> allConstructs)
+        {
+            var dummyRoot = new T()
+            {
+                Body = null!
+            };
+            allConstructs.Sort(DescendingSizeComparison);
+            allConstructs.ForEach(dummyRoot.AddChild);
+            dummyRoot.Children.ForEach(c => c.Parent = null);
+            return dummyRoot.Children;
+        }
+    }
+
+    private class NaturalLoop : GroupingConstruct<NaturalLoop>
+    {
+        public ASTBlock Header { get; init; } = null!; 
+    }
+
+    private class Selection : GroupingConstruct<Selection>
+    {
+        public ASTBlock Header { get; init; } = null!;
+        public ASTBlock Merge { get; init; } = null!;
     }
 
     private List<NaturalLoop> DetectLoops()
     {
         var headers = new HashSet<ASTBlock>();
-        var sortedBySize = new List<NaturalLoop>();
-        var backEdges = allBlocks.SelectMany(header => header.Inbound
+        var allLoops = new List<NaturalLoop>();
+        var backEdges = blocksByOffset.Values.SelectMany(header => header.Inbound
             .Where(bodyEnd => header.PreDominates(bodyEnd))
             .Select(bodyEnd => (header, bodyEnd)));
         foreach (var (header, bodyEnd) in backEdges)
         {
             var body = new HashSet<ASTBlock>() { bodyEnd };
-            foreach (var potentialBody in allBlocks.Where(header.PreDominates))
-                CheckAndMarkReachable(body, header, potentialBody);
+            foreach (var potentialBody in blocksByOffset.Values.Where(header.PreDominates))
+                FindReachableBlocksFrom(body, header, potentialBody);
             body.Add(header);
             
             if (!headers.Add(header))
                 throw new NotSupportedException("Unsupported control flow with merged loops");
-            sortedBySize.Add(new()
+            allLoops.Add(new()
             {
                 Header = header,
                 Body = body
             });
         }
-        
-        // Construct hierarchy by using a dummy "root-of-roots" loop
-        var rootLoop = new NaturalLoop()
-        {
-            Header = null!,
-            Body = null!
-        };
-        sortedBySize.Sort(NaturalLoop.DescendingSizeComparison);
-        sortedBySize.ForEach(rootLoop.AddChild);
-        rootLoop.Children.ForEach(c => c.Parent = null);
-        return rootLoop.Children;
 
-        void CheckAndMarkReachable(HashSet<ASTBlock> body, ASTBlock header, ASTBlock start)
+        return NaturalLoop.CreateHierarchy(allLoops);
+    }
+
+    private HashSet<ASTBlock> FindReachableBlocksFrom(HashSet<ASTBlock> body, ASTBlock header, ASTBlock start)
+    {
+        // Using pre-order traversal.
+        if (start == header || body.Contains(start))
+            return body;
+        var visited = new HashSet<ASTBlock>(blocksByOffset.Count);
+        var stack = new Stack<(ASTBlock, IEnumerator<ASTBlock>)>();
+        stack.Push((start, start.Outbound.GetEnumerator()));
+        while (stack.Any())
         {
-            // Using pre-order traversal.
-            if (start == header || body.Contains(start))
-                return;
-            var visited = new HashSet<ASTBlock>(allBlocks.Count);
-            var stack = new Stack<(ASTBlock, IEnumerator<ASTBlock>)>();
-            stack.Push((start, start.Outbound.GetEnumerator()));
-            while (stack.Any())
+            var (parent, edgeIt) = stack.Pop();
+            visited.Add(parent);
+            if (!edgeIt.MoveNext())
+                continue;
+            var child = edgeIt.Current;
+
+            // All blocks in body are reachable so all finish the search
+            if (body.Contains(child))
             {
-                var (parent, edgeIt) = stack.Pop();
-                visited.Add(parent);
-                if (!edgeIt.MoveNext())
-                    continue;
-                var child = edgeIt.Current;
-
-                // All blocks in body are reachable so all finish the search
-                if (body.Contains(child))
-                {
-                    // the stack now contains a path with only reachable nodes so we add all of them
-                    // for weird control graphs not all blocks on our path are dominated by the header
-                    // so we check again. However all of them reach the backedge source.
-                    body.UnionWith(stack
-                        .Select(t => t.Item1)
-                        .Prepend(parent)
-                        .Prepend(child)
-                        .Where(header.PreDominates));
-                    return;
-                }
-
-                stack.Push((parent, edgeIt));
-                if (child != header && !visited.Contains(child))
-                    stack.Push((child, child.Outbound.GetEnumerator()));
+                // the stack now contains a path with only reachable nodes so we add all of them
+                // for weird control graphs not all blocks on our path are dominated by the header
+                // so we check again. However all of them reach the backedge source.
+                body.UnionWith(stack
+                    .Select(t => t.Item1)
+                    .Prepend(parent)
+                    .Prepend(child)
+                    .Where(header.PreDominates));
             }
+
+            stack.Push((parent, edgeIt));
+            if (child != header && !visited.Contains(child))
+                stack.Push((child, child.Outbound.GetEnumerator()));
         }
+        return body;
     }
 
     private void ConstructLoops(IReadOnlyList<NaturalLoop> rootLoops)
     {
-        var allLoops = rootLoops.SelectMany(l => l.AllLoops).OrderByDescending(l => l.Rank);
+        var allLoops = rootLoops.SelectMany(l => l.AllChildren).OrderByDescending(l => l.Rank);
         foreach (var loop in allLoops)
         {
             var backTarget = loop.Header;
@@ -353,14 +356,15 @@ partial class ScriptDecompiler
             if (targetInbounds.Length != 2 || targetOutbounds.Length != 2)
                 throw new NotSupportedException("Loop with unexpected structure, header has not two inbound and two outbound blocks");
 
-            var backSource = loop.Body.Contains(targetInbounds[0]) ? targetInbounds[0] : targetInbounds[1];
+            var backSource = (ASTNormalBlock)(loop.Body.Contains(targetInbounds[0]) ? targetInbounds[0] : targetInbounds[1]);
             var externalInbound = backSource == targetInbounds[0] ? targetInbounds[1] : targetInbounds[0];
             if (!loop.Body.Contains(backSource) || loop.Body.Contains(externalInbound))
                 throw new NotSupportedException("Loop with unexpected structure, header inbounds are not supported");
 
             if (backSource.Outbound.Count != 1)
                 throw new NotSupportedException("Loop with unexpected structure, back-edge block is branching");
-            backSource.NeedsExplicitControlFlow = false;
+            backSource.ConstructProvidesControlFlow = true;
+            backSource.LastInstructionIsRedundantControlFlow = true;
             var jumpBackInstr = ((ASTNormalBlock)backSource).Instructions.RemoveLast();
             if ((jumpBackInstr as ASTRootOpInstruction)?.RootInstruction.Op != ScriptOp.Jump)
                 throw new NotSupportedException("Should the back-edge source block not end with an unconditional jump?");
@@ -380,25 +384,189 @@ partial class ScriptDecompiler
             };
             foreach (var block in loop.Body)
                 block.Parent = astLoop;
-            allBlocks.Add(astLoop);
+            blocksByOffset[loop.Header.StartTotalOffset] = astLoop;
 
             if (loop.Parent != null)
             {
                 loop.Parent.Body.ExceptWith(loop.Body);
                 loop.Parent.Body.Add(astLoop);
             }
+            else if (loop.Header == astEntry)
+                astEntry = astLoop;
         }
     }
 
-    private void ConstructSelections() { }
+    private List<Selection> DetectSelections()
+    {
+        var headers = blocksByOffset.Values
+            .Where(b => b.Parent == null)
+            .Where(b => b.Outbound.Count > 1);
+        var allSelections = new List<Selection>();
+        foreach (var header in headers)
+        {
+            var mergeBlock = header.Outbound
+                .Select(b => b.PostDominators.Prepend(b))
+                .Aggregate((a, b) => a.Intersect(b).ToArray())
+                .FirstOrDefault();
+            if (mergeBlock == null) // You remember that loops have no dominator info calculated?
+                throw new NotSupportedException("Could not find merge block for selection");
+
+            var branches = header.Outbound
+                .Select(branch => FindReachableBlocksFrom(new() { mergeBlock }, header, branch))
+                .ToArray();
+            foreach (var branch in branches)
+                branch.Remove(mergeBlock);
+            for (int i = 0; i < branches.Length; i++)
+            {
+                for (int j = i + 1; j < branches.Length; j++)
+                {
+                    if (branches[i].Overlaps(branches[j]))
+                        throw new NotSupportedException("Unsupported selection with merged branches");
+                }
+            }
+
+            allSelections.Add(new()
+            {
+                Header = header,
+                Body = branches.SelectMany(a => a).Prepend(header).ToHashSet(),
+                Merge = mergeBlock
+            });
+        }
+
+        return Selection.CreateHierarchy(allSelections);
+    }
+
+    private void ConstructSelections(List<Selection> rootSelections)
+    {
+        var allSelections = rootSelections.SelectMany(s => s.AllChildren).OrderByDescending(s => s.Rank);
+        foreach (var selection in allSelections)
+        {
+            var lastInstruction = ((ASTNormalBlock)selection.Header).Instructions.Last();
+            var lastOp = ((ASTRootOpInstruction)lastInstruction).RootInstruction.Op;
+            switch (lastOp)
+            {
+                case ScriptOp.JumpIf:
+                    ConstructJumpIf(selection);
+                    break;
+                case ScriptOp.JumpIfCalc:
+                case ScriptOp.JumpIfCalc_dup:
+                    ConstructJumpIfCalc(selection);
+                    break;
+                case ScriptOp.Switch:
+                case ScriptOp.CalcSwitch:
+                    ConstructSwitch(selection, lastOp == ScriptOp.CalcSwitch);
+                    break;
+            }
+        }
+    }
+
+    private void ConstructJumpIfCalc(Selection selection)
+    {
+        if (selection.Header.Outbound.Count > 2)
+            throw new Exception("Something went wrong trying to construct a JumpIfCalc construct");
+
+        var lastInstruction = ((ASTRootOpInstruction)((ASTNormalBlock)selection.Header).Instructions.Last()).RootInstruction;
+        var thenOffset = lastInstruction.Offset + lastInstruction.Args[0].Value;
+        var elseOffset = lastInstruction.Offset + lastInstruction.Args[1].Value;
+        var thenBlock = selection.Body.SingleOrDefault(b => b.StartTotalOffset == thenOffset);
+        var elseBlock = selection.Body.SingleOrDefault(b => b.StartTotalOffset == elseOffset);
+        
+        var astIfElse = new ASTIfElse()
+        {
+            Condition = selection.Header,
+            Then = thenBlock,
+            Else = elseBlock,
+            StartOwnOffset = selection.Header.StartTotalOffset,
+            EndOwnOffset = selection.Header.EndTotalOffset
+        };
+        //((ASTNormalBlock)selection.Header).Instructions.RemoveLast(); // the JumpIfCalc instruction
+        blocksByOffset[selection.Header.StartTotalOffset] = astIfElse;
+
+        foreach (var lastBlock in selection.Merge.Inbound.Union(selection.Body))
+            lastBlock.ConstructProvidesControlFlow = true;
+        selection.Header.Parent = astIfElse;
+        foreach (var body in selection.Body)
+            body.Parent = astIfElse;
+
+        if (selection.Parent != null)
+        {
+            selection.Parent.Body.ExceptWith(selection.Body);
+            selection.Parent.Body.Remove(selection.Header);
+            selection.Parent.Body.Add(astIfElse);
+        }
+        else if (selection.Header == astEntry)
+            astEntry = astIfElse;
+    }
+
+    private void ConstructJumpIf(Selection selection)
+    {
+        if (selection.Header.Outbound.Count != 2)
+            throw new Exception("Something went wrong trying to construct a JumpIf");
+
+        var lastInstruction = ((ASTRootOpInstruction)((ASTNormalBlock)selection.Header).Instructions.Last()).RootInstruction;
+        var jumpTarget = lastInstruction.Offset + lastInstruction.Args[0].Value;
+        var thenBlock = selection.Header.Outbound.SingleOrDefault(b => b.StartTotalOffset != jumpTarget);
+        var elseBlock = selection.Header.Outbound.SingleOrDefault(b => b.StartTotalOffset == jumpTarget);
+        if (elseBlock != selection.Merge)
+            throw new Exception("Something went wrong trying to construct a JumpIf");
+
+        var header = (ASTNormalBlock)selection.Header;
+        var astCondition = new ASTNormalBlock()
+        {
+            Instructions = new()
+            {
+                new ASTReturn()
+                {
+                    Value = ExpressionFromConditionOp(
+                        lastInstruction.Args[1],
+                        lastInstruction.Args[2],
+                        (ScriptRootConditionOp)lastInstruction.Args[3].Value,
+                        negateByInstruction: true
+                    )
+                }
+            }
+        };
+        astCondition.FixChildrenParents();
+
+        var astIfElse = new ASTIfElse()
+        {
+            Prefix = header.Instructions.Any() ? header : null,
+            Condition = astCondition,
+            Then = thenBlock,
+            Else = null,
+            StartOwnOffset = header.StartTotalOffset,
+            EndOwnOffset = header.EndTotalOffset
+        };
+        //header.Instructions.RemoveLast(); // the JumpIf instruction
+        blocksByOffset[header.StartTotalOffset] = astIfElse;
+        foreach (var lastBlock in selection.Merge.Inbound.Union(selection.Body))
+            lastBlock.ConstructProvidesControlFlow = true;
+        selection.Header.Parent = astIfElse;
+        astCondition.Parent = astIfElse;
+        foreach (var body in selection.Body)
+            body.Parent = astIfElse;
+
+        if (selection.Parent != null)
+        {
+            selection.Parent.Body.ExceptWith(selection.Body);
+            selection.Parent.Body.Remove(selection.Header);
+            selection.Parent.Body.Add(astIfElse);
+        }
+        else if (selection.Header == astEntry)
+            astEntry = astIfElse;
+    }
+
+    private void ConstructSwitch(Selection selection, bool isCalcSwitch)
+    {        
+    }
 
     private void ConstructGotos()
     {
-        foreach (var block in allBlocks.OfType<ASTNormalBlock>())
+        return; // would not work for selections nor loops, rework entirely
+        foreach (var block in blocksByOffset.Values.OfType<ASTNormalBlock>())
         {
-
             if (block.Instructions.LastOrDefault() is not ASTRootOpInstruction rootInstr ||
-                !block.NeedsExplicitControlFlow)
+                block.ConstructProvidesControlFlow)
                 continue;
 
             int target = block.EndTotalOffset;
@@ -418,7 +586,7 @@ partial class ScriptDecompiler
                 addInstr = new ASTReturn();
             else
             {
-                var targetBlock = allBlocks.FirstOrDefault(b => b.StartTotalOffset == target)
+                var targetBlock = blocksByOffset[target] // TODO: you kno
                     ?? throw new Exception($"This should not have happened, goto instruction has invalid target");
                 targetBlock.IsLabeled = true;
                 addInstr = new ASTGoto() { Target = target };
@@ -435,15 +603,21 @@ partial class ScriptDecompiler
         }
     }
 
-    private void ConstructSimpleContinues()
+    private void ConstructContinues()
     {
-        foreach (var block in allBlocks.OfType<ASTNormalBlock>())
+        // does not work for selections nor loops
+        foreach (var block in blocksByOffset.Values)
         {
+            
             if (block.ContinueBlock != null ||
-                !block.NeedsExplicitControlFlow ||
-                !block.Instructions.Last().HasFallthrough)
+                block.ConstructProvidesControlFlow ||
+                !block.CanFallthrough ||
+                block.EndTotalOffset == astExit.StartTotalOffset)
                 continue;
-            block.ContinueBlock = allBlocks.FirstOrDefault(b => b.Parent == block.Parent && b.StartTotalOffset == block.EndTotalOffset);
+            if (blocksByOffset.TryGetValue(block.EndTotalOffset, out var continueBlock))
+                block.ContinueBlock = continueBlock;
+            else
+                throw new Exception("Could not find continuation by offset");
         }
     }
 }

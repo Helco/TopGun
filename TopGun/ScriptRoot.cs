@@ -7,6 +7,22 @@ using static TopGun.SpanUtils;
 
 namespace TopGun;
 
+[Flags]
+public enum ScriptRootConditionOp
+{
+    // despite being independent flags only the Negate flag can be used
+    // in parallel with one of the other ops. Those are prioritised by value
+
+    Equals = (1 << 0),
+    Greater = (1 << 1),
+    Lesser = (1 << 2),
+    Or = (1 << 3),
+    And = (1 << 4),
+    Modulo = (1 << 5),
+    NotZero = (1 << 6),
+    Negate = (1 << 7)
+}
+
 public readonly struct ScriptRootInstruction
 {
     public enum ArgType
