@@ -44,11 +44,8 @@ partial class ScriptDecompiler
             blocksByOffset.Add(curBlock.StartTotalOffset, curBlock);
 
             if (splittingOp.RootInstruction.Op != ScriptOp.JumpIf)
-            {
                 // JumpIf is the only op with a default fallthrough, all else have explicit targets or break execution
-                curBlock.Inbound.Single().Outbound.Clear();
-                curBlock.Inbound.Clear();
-            }
+                curBlock.RemoveInbound(curBlock.Inbound.Single());
         }
 
         // to preserve debug info when cleared during transformations
@@ -361,7 +358,7 @@ partial class ScriptDecompiler
             if (!loop.Body.Contains(backSource) || loop.Body.Contains(externalInbound))
                 throw new NotSupportedException("Loop with unexpected structure, header inbounds are not supported");
 
-            if (backSource.Outbound.Count != 1)
+            if (backSource.Outbound.Count() != 1)
                 throw new NotSupportedException("Loop with unexpected structure, back-edge block is branching");
             backSource.ConstructProvidesControlFlow = true;
             backSource.LastInstructionIsRedundantControlFlow = true;
@@ -376,6 +373,7 @@ partial class ScriptDecompiler
 
             var astLoop = new ASTLoop()
             {
+                BlocksByOffset = blocksByOffset,
                 IsPostCondition = false,
                 Condition = backTarget,
                 Body = loopEntry,
@@ -400,7 +398,7 @@ partial class ScriptDecompiler
     {
         var headers = blocksByOffset.Values
             .Where(b => b.Parent == null)
-            .Where(b => b.Outbound.Count > 1);
+            .Where(b => b.Outbound.Count() > 1);
         var allSelections = new List<Selection>();
         foreach (var header in headers)
         {
@@ -462,7 +460,7 @@ partial class ScriptDecompiler
 
     private void ConstructJumpIfCalc(Selection selection)
     {
-        if (selection.Header.Outbound.Count > 2)
+        if (selection.Header.Outbound.Count() > 2)
             throw new Exception("Something went wrong trying to construct a JumpIfCalc construct");
 
         var lastInstruction = ((ASTRootOpInstruction)((ASTNormalBlock)selection.Header).Instructions.Last()).RootInstruction;
@@ -473,6 +471,7 @@ partial class ScriptDecompiler
         
         var astIfElse = new ASTIfElse()
         {
+            BlocksByOffset = blocksByOffset,
             Condition = selection.Header,
             Then = thenBlock,
             Else = elseBlock,
@@ -501,7 +500,7 @@ partial class ScriptDecompiler
 
     private void ConstructJumpIf(Selection selection)
     {
-        if (selection.Header.Outbound.Count != 2)
+        if (selection.Header.Outbound.Count() != 2)
             throw new Exception("Something went wrong trying to construct a JumpIf");
 
         var lastInstruction = ((ASTRootOpInstruction)((ASTNormalBlock)selection.Header).Instructions.Last()).RootInstruction;
@@ -514,6 +513,7 @@ partial class ScriptDecompiler
         var header = (ASTNormalBlock)selection.Header;
         var astCondition = new ASTNormalBlock()
         {
+            BlocksByOffset = blocksByOffset,
             Instructions = new()
             {
                 new ASTReturn()
@@ -531,6 +531,7 @@ partial class ScriptDecompiler
 
         var astIfElse = new ASTIfElse()
         {
+            BlocksByOffset = blocksByOffset,
             Prefix = header.Instructions.Any() ? header : null,
             Condition = astCondition,
             Then = thenBlock,

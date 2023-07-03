@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -643,11 +644,15 @@ partial class ScriptDecompiler
 
     private abstract class ASTBlock : ASTNode
     {
+        public required IReadOnlyDictionary<int, ASTBlock> BlocksByOffset { get; init; }
+
         public ASTBlock? ContinueBlock { get; set; } = null;
         public override IEnumerable<ASTNode> Children => ContinueBlock == null ? Array.Empty<ASTNode>() : new[] { ContinueBlock };
 
-        public HashSet<ASTBlock> Outbound { get; init; } = new();
-        public HashSet<ASTBlock> Inbound { get; init; } = new();
+        public HashSet<int> OutboundOffsets { get; init; } = new();
+        public IEnumerable<ASTBlock> Outbound => OutboundOffsets.Select(o => BlocksByOffset[o]);
+        public HashSet<int> InboundOffsets { get; init; } = new();
+        public IEnumerable<ASTBlock> Inbound => InboundOffsets.Select(o => BlocksByOffset[o]);
         public abstract bool CanFallthrough { get; }
         public bool ConstructProvidesControlFlow { get; set; } = false;
         public bool IsLabeled { get; set; }
@@ -677,9 +682,17 @@ partial class ScriptDecompiler
 
         public void AddOutbound(ASTBlock other)
         {
-            Outbound.Add(other);
-            other.Inbound.Add(this);
+            OutboundOffsets.Add(other.StartTotalOffset);
+            other.InboundOffsets.Add(StartTotalOffset);
         }
+        public void AddInbound(ASTBlock other) => other.AddOutbound(this);
+
+        public void RemoveOutbound(ASTBlock old)
+        {
+            OutboundOffsets.Remove(old.StartTotalOffset);
+            old.InboundOffsets.Remove(StartTotalOffset);
+        }
+        public void RemoveInbound(ASTBlock old) => old.RemoveOutbound(this);
 
         public override void WriteTo(CodeWriter writer)
         {
@@ -707,18 +720,16 @@ partial class ScriptDecompiler
             var newBlock = new ASTNormalBlock()
             {
                 Instructions = Instructions.Skip(index + 1).ToList(),
-                Outbound = Outbound.ToHashSet(),
-                Inbound = new() { this }
+                BlocksByOffset = BlocksByOffset
             };
             foreach (var instr in newBlock.Instructions)
                 instr.Parent = newBlock;
-            foreach (var outbound in Outbound)
+            foreach (var outbound in Outbound.ToArray())
             {
-                outbound.Inbound.Remove(this);
-                outbound.Inbound.Add(newBlock);
+                RemoveOutbound(outbound);
+                newBlock.AddOutbound(outbound);
             }
-            Outbound.Clear();
-            Outbound.Add(newBlock);
+            AddOutbound(newBlock);
             Instructions.RemoveRange(index + 1, Instructions.Count - index - 1);
             return newBlock;
         }

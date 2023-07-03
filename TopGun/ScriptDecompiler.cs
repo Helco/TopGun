@@ -14,14 +14,20 @@ public partial class ScriptDecompiler
     private readonly ASTExitBlock astExit;
 
     private int nextTmpIndex = 0;
-    private ASTBlock astEntry = new ASTNormalBlock();
+    private ASTBlock astEntry;
     private Dictionary<int, ASTBlock> blocksByOffset = new();
 
     public ScriptDecompiler(ReadOnlySpan<byte> script, ResourceFile resFile)
     {
+        astEntry = new ASTNormalBlock() { BlocksByOffset = blocksByOffset };
         this.script = script.ToArray();
         this.resFile = resFile;
-        astExit = new() { StartOwnOffset = script.Length, EndOwnOffset = script.Length };
+        astExit = new()
+        {
+            StartOwnOffset = script.Length,
+            EndOwnOffset = script.Length,
+            BlocksByOffset = blocksByOffset
+        };
         globalVarCount = 5118;
     }
 
@@ -69,7 +75,7 @@ public partial class ScriptDecompiler
 
     private void CreateInitialAST()
     {
-        var astEntry = new ASTNormalBlock();
+        var astEntry = new ASTNormalBlock() { BlocksByOffset = blocksByOffset };
         this.astEntry = astEntry;
         var rootReader = new SpanReader(script);
         while (!rootReader.EndOfSpan)
