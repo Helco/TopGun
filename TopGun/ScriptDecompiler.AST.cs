@@ -646,7 +646,8 @@ partial class ScriptDecompiler
     {
         public required IReadOnlyDictionary<int, ASTBlock> BlocksByOffset { get; init; }
 
-        public ASTBlock? ContinueBlock { get; set; } = null;
+        public int? ContinueOffset { get; set; }
+        public ASTBlock? ContinueBlock => ContinueOffset.HasValue ? BlocksByOffset[ContinueOffset.Value] : null;
         public override IEnumerable<ASTNode> Children => ContinueBlock == null ? Array.Empty<ASTNode>() : new[] { ContinueBlock };
 
         public HashSet<int> OutboundOffsets { get; init; } = new();
@@ -696,6 +697,8 @@ partial class ScriptDecompiler
 
         public override void WriteTo(CodeWriter writer)
         {
+            if (StartTextPosition != default && EndTextPosition != default && this is not ASTExitBlock)
+                throw new Exception("Attempted to write block twice. Das schlecht.");
             base.WriteTo(writer);
             ContinueBlock?.WriteTo(writer);
         }
@@ -805,8 +808,10 @@ partial class ScriptDecompiler
         // for JumpIf Condition is formed by args with potential instructions before the jump
         public ASTBlock? Prefix { get; init; }
         public required ASTBlock Condition { get; init; }
-        public required ASTBlock? Then { get; init; }
-        public required ASTBlock? Else { get; init; }
+        public required int? ThenOffset { get; init; }
+        public ASTBlock? Then => ThenOffset == null ? null : BlocksByOffset[ThenOffset.Value];
+        public required int? ElseOffset { get; init; }
+        public ASTBlock? Else => ElseOffset == null ? null : BlocksByOffset[ElseOffset.Value];
         public override IEnumerable<ASTNode> Children =>
             base.Children.Concat(new[] { Prefix, Condition, Then, Else }.Where(n => n != null))!;
         public override bool CanFallthrough => false;

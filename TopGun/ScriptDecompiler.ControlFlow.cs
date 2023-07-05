@@ -378,7 +378,7 @@ partial class ScriptDecompiler
                 Condition = backTarget,
                 Body = loopEntry,
                 Loop = loop.Body,
-                ContinueBlock = externalOutbound
+                ContinueOffset = externalOutbound?.StartTotalOffset
             };
             foreach (var block in loop.Body)
                 block.Parent = astLoop;
@@ -473,9 +473,9 @@ partial class ScriptDecompiler
         {
             BlocksByOffset = blocksByOffset,
             Condition = selection.Header,
-            Then = thenBlock,
-            Else = elseBlock,
-            ContinueBlock = selection.Merge,
+            ThenOffset = thenBlock?.StartTotalOffset,
+            ElseOffset = elseBlock?.StartTotalOffset,
+            ContinueOffset = selection.Merge.StartTotalOffset,
             StartOwnOffset = selection.Header.StartTotalOffset,
             EndOwnOffset = selection.Header.EndTotalOffset
         };
@@ -528,15 +528,16 @@ partial class ScriptDecompiler
             }
         };
         astCondition.FixChildrenParents();
+        blocksByOffset[--nextPseudoOffset] = astCondition;
 
         var astIfElse = new ASTIfElse()
         {
             BlocksByOffset = blocksByOffset,
             Prefix = header.Instructions.Any() ? header : null,
             Condition = astCondition,
-            Then = thenBlock,
-            Else = null,
-            ContinueBlock = selection.Merge,
+            ThenOffset = thenBlock?.StartTotalOffset,
+            ElseOffset = null,
+            ContinueOffset = selection.Merge.StartTotalOffset,
             StartOwnOffset = header.StartTotalOffset,
             EndOwnOffset = header.EndTotalOffset
         };
@@ -617,10 +618,7 @@ partial class ScriptDecompiler
                 !block.CanFallthrough ||
                 block.EndTotalOffset == astExit.StartTotalOffset)
                 continue;
-            if (blocksByOffset.TryGetValue(block.EndTotalOffset, out var continueBlock))
-                block.ContinueBlock = continueBlock;
-            else
-                throw new Exception("Could not find continuation by offset");
+            block.ContinueOffset = block.EndTotalOffset;
         }
     }
 }

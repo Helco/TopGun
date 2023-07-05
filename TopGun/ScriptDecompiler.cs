@@ -14,6 +14,7 @@ public partial class ScriptDecompiler
     private readonly ASTExitBlock astExit;
 
     private int nextTmpIndex = 0;
+    private int nextPseudoOffset = -10;
     private ASTBlock astEntry;
     private Dictionary<int, ASTBlock> blocksByOffset = new();
 
@@ -42,11 +43,11 @@ public partial class ScriptDecompiler
         CreateInitialBlocks();
         SetBlockEdges();
 
-        /*foreach (var block in blocksByOffset.Values)
+        foreach (var block in blocksByOffset.Values)
         {
             foreach (var outBlock in block.Outbound)
                 Console.WriteLine($"{block.StartTotalOffset} -> {outBlock.StartTotalOffset};");
-        }*/
+        }
 
         SetPostOrderNumber();
         SetPostOrderRevNumber();
