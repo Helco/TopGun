@@ -175,7 +175,7 @@ internal class Program
         var allResFiles = new List<ResourceFile>();
         foreach (var resFilePath in allPaths)
         {
-            if (!resFilePath.Contains("tama"))
+            if (!resFilePath.Contains("TAMA.BIN"))
                 continue;
 
             var resourceFile = new ResourceFile(resFilePath);
@@ -183,6 +183,7 @@ internal class Program
             //var scriptOutput = Console.Out;
             foreach (var (index, res) in resourceFile.Resources.Select((r, i) => (i, r)).Where(t => t.r.Type == ResourceType.Script))
             {
+                if (index != 37) continue;
                 var scriptFull = resourceFile.ReadResource(res);
 
                 scriptOutput.WriteLine();
