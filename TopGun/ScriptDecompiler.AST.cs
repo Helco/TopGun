@@ -775,7 +775,8 @@ partial class ScriptDecompiler
     {
         public required bool IsPostCondition { get; init; }
         public required ASTBlock Condition { get; init; }
-        public required ASTBlock Body { get; init; }
+        public required int BodyOffset { get; init; }
+        public ASTBlock Body => BlocksByOffset[BodyOffset];
         public HashSet<ASTBlock> Loop { get; init; } = new();
         public override IEnumerable<ASTNode> Children => base.Children.Concat(Loop);
         public override bool CanFallthrough => false;

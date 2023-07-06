@@ -375,7 +375,7 @@ partial class ScriptDecompiler
                 BlocksByOffset = blocksByOffset,
                 IsPostCondition = false,
                 Condition = backTarget,
-                Body = loopEntry,
+                BodyOffset = loopEntry.StartTotalOffset,
                 Loop = loop.Body,
                 ContinueOffset = externalOutbound?.StartTotalOffset
             };
@@ -465,15 +465,13 @@ partial class ScriptDecompiler
         var lastInstruction = ((ASTRootOpInstruction)((ASTNormalBlock)selection.Header).Instructions.Last()).RootInstruction;
         var thenOffset = lastInstruction.Offset + lastInstruction.Args[0].Value;
         var elseOffset = lastInstruction.Offset + lastInstruction.Args[1].Value;
-        var thenBlock = selection.Body.SingleOrDefault(b => b.StartTotalOffset == thenOffset);
-        var elseBlock = selection.Body.SingleOrDefault(b => b.StartTotalOffset == elseOffset);
         
         var astIfElse = new ASTIfElse()
         {
             BlocksByOffset = blocksByOffset,
             Condition = selection.Header,
-            ThenOffset = thenBlock?.StartTotalOffset,
-            ElseOffset = elseBlock?.StartTotalOffset,
+            ThenOffset = thenOffset,
+            ElseOffset = elseOffset == selection.Merge.StartTotalOffset ? null : elseOffset,
             ContinueOffset = selection.Merge == selection.Parent?.Merge ? null : selection.Merge.StartTotalOffset,
             StartOwnOffset = selection.Header.StartTotalOffset,
             EndOwnOffset = selection.Header.EndTotalOffset
