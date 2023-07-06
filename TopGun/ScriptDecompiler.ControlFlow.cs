@@ -475,7 +475,7 @@ partial class ScriptDecompiler
             Condition = selection.Header,
             ThenOffset = thenBlock?.StartTotalOffset,
             ElseOffset = elseBlock?.StartTotalOffset,
-            ContinueOffset = selection.Merge.StartTotalOffset,
+            ContinueOffset = selection.Merge == selection.Parent?.Merge ? null : selection.Merge.StartTotalOffset,
             StartOwnOffset = selection.Header.StartTotalOffset,
             EndOwnOffset = selection.Header.EndTotalOffset
         };
@@ -537,7 +537,7 @@ partial class ScriptDecompiler
             Condition = astCondition,
             ThenOffset = thenBlock?.StartTotalOffset,
             ElseOffset = null,
-            ContinueOffset = selection.Merge.StartTotalOffset,
+            ContinueOffset = selection.Merge == selection.Parent?.Merge ? null : selection.Merge.StartTotalOffset,
             StartOwnOffset = header.StartTotalOffset,
             EndOwnOffset = header.EndTotalOffset
         };
