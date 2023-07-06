@@ -19,7 +19,6 @@ partial class ScriptDecompiler
     private static readonly IReadOnlySet<ScriptOp> SplittingOps = new HashSet<ScriptOp>(BranchingOps)
     {
         ScriptOp.Jump,
-        ScriptOp.Return,
         ScriptOp.Exit
     };
 
@@ -61,7 +60,7 @@ partial class ScriptDecompiler
             .OfType<ASTRootOpInstruction>()
             .ToDictionary(i => i.StartTotalOffset, i => i);
 
-        foreach (var instr in instrByOffset.Values.Where(i => i.RootInstruction.Op is ScriptOp.Return or ScriptOp.Exit))
+        foreach (var instr in instrByOffset.Values.Where(i => i.RootInstruction.Op == ScriptOp.Exit))
             ((ASTBlock)instr.Parent!).AddOutbound(astExit);
 
         var edges = instrByOffset.Values.SelectMany(instr => instr.RootInstruction.Args
