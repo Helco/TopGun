@@ -212,7 +212,7 @@ partial class ScriptDecompiler
         }
     }
 
-    private List<NaturalLoop> DetectLoops()
+    private List<GroupingConstruct> DetectLoops()
     {
         var headers = new HashSet<ASTBlock>();
         var allLoops = new List<GroupingConstruct>();
@@ -222,9 +222,7 @@ partial class ScriptDecompiler
         foreach (var (header, bodyEnd) in backEdges)
         {
             var body = new HashSet<ASTBlock>() { bodyEnd };
-            foreach (var potentialBody in blocksByOffset.Values.Where(header.PreDominates))
-                FindReachableBlocksFrom(body, header, potentialBody);
-            body.Add(header);
+            FindReachableFromTo(body, bodyEnd, header, new BackwardBlockIterator(ASTEntry));
             
             if (!headers.Add(header))
                 throw new NotSupportedException("Unsupported control flow with merged loops");
@@ -236,50 +234,45 @@ partial class ScriptDecompiler
             });
         }
 
-        return NaturalLoop.CreateHierarchy(allLoops).OfType<NaturalLoop>().ToList();
+        return allLoops;
     }
 
-    private HashSet<ASTBlock> FindReachableBlocksFrom(HashSet<ASTBlock> body, ASTBlock header, ASTBlock start)
+    private HashSet<ASTBlock> FindReachableFromTo(HashSet<ASTBlock> body, ASTBlock from, ASTBlock to, IBlockIterator iterator)
     {
-        // Using pre-order traversal.
-        if (start == header || body.Contains(start))
+        // this is not quite standard and will only correctly work with 
+        //   - natural loops that have exactly one backedge
+        //   - selections
+        // (or similar: structures that are fenced by exactly one predetermined block)
+        // that are fully nested or disjoint
+
+        body.Add(to);
+        if (from == to)
             return body;
-        var visited = new HashSet<ASTBlock>(blocksByOffset.Count);
         var stack = new Stack<(ASTBlock, IEnumerator<ASTBlock>)>();
-        stack.Push((start, start.Outbound.GetEnumerator()));
-        while (stack.Any())
+        stack.Push((from, iterator.GetOutbound(from).GetEnumerator()));
+        while(stack.Any())
         {
-            var (parent, edgeIt) = stack.Pop();
-            visited.Add(parent);
+            var (parent, edgeIt) = stack.Peek();
+            body.Add(parent);
             if (!edgeIt.MoveNext())
-                continue;
-            var child = edgeIt.Current;
-
-            // All blocks in body are reachable so all finish the search
-            if (body.Contains(child))
             {
-                // the stack now contains a path with only reachable nodes so we add all of them
-                // for weird control graphs not all blocks on our path are dominated by the header
-                // so we check again. However all of them reach the backedge source.
-                body.UnionWith(stack
-                    .Select(t => t.Item1)
-                    .Prepend(parent)
-                    .Prepend(child)
-                    .Where(header.PreDominates));
+                stack.Pop();
+                continue;
             }
-
-            stack.Push((parent, edgeIt));
-            if (child != header && !visited.Contains(child))
-                stack.Push((child, child.Outbound.GetEnumerator()));
+            var child = edgeIt.Current;
+            
+            if (!body.Contains(child) && child != from)
+                stack.Push((child, iterator.GetOutbound(child).GetEnumerator()));
         }
         return body;
     }
 
-    private List<Selection> DetectSelections()
+    private List<GroupingConstruct> DetectSelections()
     {
         var headers = blocksByOffset.Values
             .Where(b => b.Parent == null)
-            .Where(b => b.Outbound.Count() > 1);
+            .Where(b => b.Outbound.Count() > 1)
+            .Where(b => b.Inbound.All(i => !b.PreDominates(i))); // no back edges
         var allSelections = new List<GroupingConstruct>();
         foreach (var header in headers)
         {
@@ -291,7 +284,7 @@ partial class ScriptDecompiler
                 throw new NotSupportedException("Could not find merge block for selection");
 
             var branches = header.Outbound
-                .Select(branch => FindReachableBlocksFrom(new() { mergeBlock }, header, branch))
+                .Select(branch => FindReachableFromTo(new(), branch, mergeBlock, new ForwardBlockIterator(ASTEntry)))
                 .ToArray();
             foreach (var branch in branches)
                 branch.Remove(mergeBlock);
@@ -335,6 +328,6 @@ partial class ScriptDecompiler
             });
         }
 
-        return Selection.CreateHierarchy(allSelections).OfType<Selection>().ToList();
+        return allSelections;
     }
 }

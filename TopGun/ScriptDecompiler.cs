@@ -41,21 +41,18 @@ public partial class ScriptDecompiler
         // Control flow analysis
         CreateInitialBlocks();
         SetBlockEdges();
-
-        foreach (var block in blocksByOffset.Values)
-        {
-            foreach (var outBlock in block.Outbound)
-                Console.WriteLine($"{block.StartTotalOffset} -> {outBlock.StartTotalOffset};");
-        }
-
+        DebugPrintBlockEdges();
         SetPostOrderNumber();
         SetPostOrderRevNumber();
         SetPreDominators();
         SetPostDominators();
         var loops = DetectLoops();
-        ConstructLoops(loops);
         var selections = DetectSelections();
-        ConstructSelections(selections);
+
+        var constructs = GroupingConstruct.CreateHierarchy(loops.Concat(selections));
+        foreach (var construct in constructs.SelectMany(c => c.AllChildren))
+            construct.Construct();
+        DebugPrintConstructHierarchy(constructs);
         ConstructGotos();
         ConstructContinues();
 
@@ -64,6 +61,32 @@ public partial class ScriptDecompiler
         var unwrittenBlocks = blocksByOffset.Values.Where(b => b is not ASTExitBlock && b.StartTextPosition == default && b.EndTextPosition == default);
         if (unwrittenBlocks.Any())
             throw new Exception($"Detected unwritten blocks ({string.Join(", ", unwrittenBlocks)}), something went wrong");
+    }
+
+    private void DebugPrintBlockEdges()
+    {
+        foreach (var block in blocksByOffset.Values)
+        {
+            foreach (var outBlock in block.Outbound)
+                Console.WriteLine($"{block.StartTotalOffset} -> {outBlock.StartTotalOffset};");
+        }
+    }
+
+    private void DebugPrintConstructHierarchy(IEnumerable<GroupingConstruct> rootConstructs)
+    {
+        using var writer = new CodeWriter(Console.Out, disposeWriter: false);
+        foreach (var construct in rootConstructs)
+            Print(writer, construct);
+
+        static void Print(CodeWriter writer, GroupingConstruct construct)
+        {
+            writer.WriteLine(construct.GetType().Name +
+                " @ " + construct.Body.Min(b => b.StartTotalOffset) +
+                " -> " + construct.Body.Max(b => b.EndTotalOffset));
+            using var subWriter = writer.Indented;
+            foreach (var child in construct.Children.OrderBy(c => c.Body.Min(b => b.StartTotalOffset)))
+                Print(subWriter, child);
+        }
     }
 
     private void WriteTo(CodeWriter writer)

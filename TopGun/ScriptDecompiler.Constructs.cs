@@ -12,7 +12,8 @@ partial class ScriptDecompiler
         public GroupingConstruct? Parent { get; set; }
         public List<GroupingConstruct> Children { get; } = new();
         public HashSet<ASTBlock> Body { get; init; } = new();
-        public IEnumerable<GroupingConstruct> AllChildren => Children.SelectMany(c => c.AllChildren).Prepend(this);
+        public IEnumerable<GroupingConstruct> AllChildren => // implicitly sorted descending by rank
+            Children.SelectMany(c => c.AllChildren).Append(this);
 
         public int Rank
         {
@@ -46,15 +47,15 @@ partial class ScriptDecompiler
             parentChild.AddChild(child);
         }
 
-        public static List<GroupingConstruct> CreateHierarchy(List<GroupingConstruct> allConstructs)
+        public static List<GroupingConstruct> CreateHierarchy(IEnumerable<GroupingConstruct> allConstructs)
         {
             var dummyRoot = new DummyConstruct()
             {
                 Decompiler = null!,
                 Body = null!
             };
-            allConstructs.Sort(DescendingSizeComparison);
-            allConstructs.ForEach(dummyRoot.AddChild);
+            foreach (var child in allConstructs.OrderByDescending(c => c.Body.Count))
+                dummyRoot.AddChild(child);
             dummyRoot.Children.ForEach(c => c.Parent = null);
             return dummyRoot.Children;
         }
@@ -234,24 +235,6 @@ partial class ScriptDecompiler
     {
         public override void Construct()
         {
-        }
-    }
-
-    private void ConstructLoops(IReadOnlyList<NaturalLoop> rootLoops)
-    {
-        var allLoops = rootLoops.SelectMany(l => l.AllChildren).OrderByDescending(l => l.Rank);
-        foreach (var loop in allLoops.OfType<NaturalLoop>())
-        {
-            loop.Construct();
-        }
-    }
-    
-    private void ConstructSelections(List<Selection> rootSelections)
-    {
-        var allSelections = rootSelections.SelectMany(s => s.AllChildren).OrderByDescending(s => s.Rank);
-        foreach (var selection in allSelections.OfType<Selection>())
-        {
-            selection.Construct();
         }
     }
 
