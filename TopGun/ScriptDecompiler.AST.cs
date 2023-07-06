@@ -644,7 +644,7 @@ partial class ScriptDecompiler
 
     private abstract class ASTBlock : ASTNode
     {
-        public required IReadOnlyDictionary<int, ASTBlock> BlocksByOffset { get; init; }
+        public required IDictionary<int, ASTBlock> BlocksByOffset { get; init; }
 
         public int? ContinueOffset { get; set; }
         public ASTBlock? ContinueBlock => ContinueOffset.HasValue ? BlocksByOffset[ContinueOffset.Value] : null;

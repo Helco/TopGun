@@ -24,14 +24,10 @@ partial class ScriptDecompiler
 
     private void CreateInitialBlocks()
     {
-        blocksByOffset.Clear();
-        blocksByOffset.Add(astExit.StartTotalOffset, astExit);
-        blocksByOffset.Add(0, astEntry);
+        if (((ASTNormalBlock)ASTEntry).Instructions.Last().CanFallthough)
+            ASTEntry.AddOutbound(astExit); // implicit exit at end of script
 
-        if (((ASTNormalBlock)astEntry).Instructions.Last().CanFallthough)
-            astEntry.AddOutbound(astExit); // implicit exit at end of script
-
-        var curBlock = (ASTNormalBlock)astEntry;
+        var curBlock = (ASTNormalBlock)ASTEntry;
         while (true)
         {
             var splittingOp = curBlock.Instructions
@@ -134,7 +130,7 @@ partial class ScriptDecompiler
         public IEnumerable<ASTBlock> GetInbound(ASTBlock block) => block.Outbound;
     }
 
-    private void SetPostOrderNumber() => SetPostOrder(new ForwardBlockIterator(astEntry));
+    private void SetPostOrderNumber() => SetPostOrder(new ForwardBlockIterator(ASTEntry));
     private void SetPostOrderRevNumber() => SetPostOrder(new BackwardBlockIterator(astExit));
 
     /// <remarks>Using depth-first traversal, post-order</remarks>
@@ -160,7 +156,7 @@ partial class ScriptDecompiler
         }
     }
 
-    private void SetPreDominators() => SetDominators(new ForwardBlockIterator(astEntry));
+    private void SetPreDominators() => SetDominators(new ForwardBlockIterator(ASTEntry));
     private void SetPostDominators() => SetDominators(new BackwardBlockIterator(astExit));
 
     /// <remarks>Cooper, Harvey, Kennedy - "A Simple, Fast Dominance Algorithm"</remarks>
@@ -234,6 +230,7 @@ partial class ScriptDecompiler
                 throw new NotSupportedException("Unsupported control flow with merged loops");
             allLoops.Add(new NaturalLoop()
             {
+                Decompiler = this,
                 Header = header,
                 Body = body
             });
@@ -307,11 +304,34 @@ partial class ScriptDecompiler
                 }
             }
 
-            allSelections.Add(new Selection()
+            var body = branches.SelectMany(a => a).Prepend(header).ToHashSet();
+            var lastOp = ((ASTRootOpInstruction)((ASTNormalBlock)header).Instructions.Last()).RootInstruction.Op;
+            allSelections.Add(lastOp switch
             {
-                Header = header,
-                Body = branches.SelectMany(a => a).Prepend(header).ToHashSet(),
-                Merge = mergeBlock
+                ScriptOp.JumpIf => new JumpIfSelection()
+                {
+                    Decompiler = this,
+                    Header = header,
+                    Body = body,
+                    Merge = mergeBlock
+                },
+                ScriptOp.JumpIfCalc or
+                ScriptOp.JumpIfCalc_dup => new JumpIfCalcSelection()
+                {
+                    Decompiler = this,
+                    Header = header,
+                    Body = body,
+                    Merge = mergeBlock
+                },
+                ScriptOp.Switch or
+                ScriptOp.CalcSwitch => new SwitchSelection()
+                {
+                    Decompiler = this,
+                    Header = header,
+                    Body = body,
+                    Merge = mergeBlock
+                },
+                _ => throw new Exception("Somehow selection header has unknown last instruction")
             });
         }
 
