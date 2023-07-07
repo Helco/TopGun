@@ -46,14 +46,14 @@ public partial class ScriptDecompiler
         SetPostOrderRevNumber();
         SetPreDominators();
         SetPostDominators();
+
+        // Constructs
         var loops = DetectLoops();
         var selections = DetectSelections();
-
         var constructs = GroupingConstruct.CreateHierarchy(loops.Concat(selections));
         foreach (var construct in constructs.SelectMany(c => c.AllChildren))
             construct.Construct();
         DebugPrintConstructHierarchy(constructs);
-        ConstructGotos();
         ConstructContinues();
 
         WriteTo(codeWriter);
@@ -89,12 +89,7 @@ public partial class ScriptDecompiler
         }
     }
 
-    private void WriteTo(CodeWriter writer)
-    {
-        ASTEntry.WriteTo(writer);
-        /*foreach (var block in allBlocks.Where(b => b.Parent == null).OrderBy(b => b.StartTotalOffset))
-            block.WriteTo(writer);*/
-    }
+    private void WriteTo(CodeWriter writer) => ASTEntry.WriteTo(writer);
 
     private void CreateInitialAST()
     {

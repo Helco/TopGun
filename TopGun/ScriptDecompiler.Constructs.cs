@@ -93,9 +93,6 @@ partial class ScriptDecompiler
                 throw new NotSupportedException("Loop with unexpected structure, back-edge block is branching");
             backSource.ConstructProvidesControlFlow = true;
             backSource.LastInstructionIsRedundantControlFlow = true;
-            var jumpBackInstr = ((ASTNormalBlock)backSource).Instructions.RemoveLast();
-            if ((jumpBackInstr as ASTRootOpInstruction)?.RootInstruction.Op != ScriptOp.Jump)
-                throw new NotSupportedException("Should the back-edge source block not end with an unconditional jump?");
             
             var loopEntry = Body.Contains(targetOutbounds[0]) ? targetOutbounds[0] : targetOutbounds[1];
             var externalOutbound = loopEntry == targetOutbounds[0] ? targetOutbounds[1] : targetOutbounds[0];
@@ -174,9 +171,8 @@ partial class ScriptDecompiler
                 StartOwnOffset = header.StartTotalOffset,
                 EndOwnOffset = header.EndTotalOffset
             };
-            //header.Instructions.RemoveLast(); // the JumpIf instruction
             Header.BlocksByOffset[header.StartTotalOffset] = astIfElse;
-            foreach (var lastBlock in Merge.Inbound.Union(Body))
+            foreach (var lastBlock in Merge.Inbound.Intersect(Body))
                 lastBlock.ConstructProvidesControlFlow = true;
             Header.Parent = astIfElse;
             astCondition.Parent = astIfElse;
@@ -213,10 +209,9 @@ partial class ScriptDecompiler
                 StartOwnOffset = Header.StartTotalOffset,
                 EndOwnOffset = Header.EndTotalOffset
             };
-            //((ASTNormalBlock)Header).Instructions.RemoveLast(); // the JumpIfCalc instruction
             Header.BlocksByOffset[Header.StartTotalOffset] = astIfElse;
 
-            foreach (var lastBlock in Merge.Inbound.Union(Body))
+            foreach (var lastBlock in Merge.Inbound.Intersect(Body))
                 lastBlock.ConstructProvidesControlFlow = true;
             Header.Parent = astIfElse;
             foreach (var body in Body)
@@ -238,55 +233,10 @@ partial class ScriptDecompiler
         }
     }
 
-    private void ConstructGotos()
-    {
-        return; // would not work for selections nor loops, rework entirely
-        foreach (var block in blocksByOffset.Values.OfType<ASTNormalBlock>())
-        {
-            if (block.Instructions.LastOrDefault() is not ASTRootOpInstruction rootInstr ||
-                block.ConstructProvidesControlFlow)
-                continue;
-
-            int target = block.EndTotalOffset;
-            var removeLast = false;
-            if (rootInstr.RootInstruction.Op == ScriptOp.Jump)
-            {
-                removeLast = true;
-                target = rootInstr.RootInstruction.Offset + rootInstr.RootInstruction.Args[0].Value;
-            }
-            else if (SplittingOps.Contains(rootInstr.RootInstruction.Op))
-                continue;
-            if (target == block.EndTotalOffset)
-                continue;
-
-            ASTInstruction addInstr;
-            if (target == script.Length)
-                addInstr = new ASTReturn();
-            else
-            {
-                var targetBlock = blocksByOffset[target] // TODO: you kno
-                    ?? throw new Exception($"This should not have happened, goto instruction has invalid target");
-                targetBlock.IsLabeled = true;
-                addInstr = new ASTGoto() { Target = target };
-            }
-
-            addInstr.Parent = block;
-            if (removeLast)
-            {
-                block.Instructions.RemoveLast();
-                addInstr.StartOwnOffset = rootInstr.StartTotalOffset;
-                addInstr.EndOwnOffset = rootInstr.EndTotalOffset;
-            }
-            block.Instructions.Add(addInstr);
-        }
-    }
-
     private void ConstructContinues()
     {
-        // does not work for selections nor loops
         foreach (var block in blocksByOffset.Values)
         {
-            
             if (block.ContinueBlock != null ||
                 block.ConstructProvidesControlFlow ||
                 !block.CanFallthrough ||
