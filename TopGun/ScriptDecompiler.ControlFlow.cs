@@ -97,11 +97,7 @@ partial class ScriptDecompiler
     private interface IBlockIterator
     {
         ASTBlock Start { get; }
-
-        int GetOrder(ASTBlock block);
-        void SetOrder(ASTBlock block, int order);
-        ASTBlock? GetImmediateDominator(ASTBlock block);
-        void SetImmediateDominator(ASTBlock block, ASTBlock dominator);
+        
         IEnumerable<ASTBlock> GetOutbound(ASTBlock block);
         IEnumerable<ASTBlock> GetInbound(ASTBlock block);
     }
@@ -110,10 +106,6 @@ partial class ScriptDecompiler
     {
         public ASTBlock Start { get; }
         public ForwardBlockIterator(ASTBlock start) => Start = start;
-        public int GetOrder(ASTBlock block) => block.PostOrderI;
-        public void SetOrder(ASTBlock block, int order) => block.PostOrderI = order;
-        public ASTBlock? GetImmediateDominator(ASTBlock block) => block.ImmediatePreDominator;
-        public void SetImmediateDominator(ASTBlock block, ASTBlock dominator) => block.ImmediatePreDominator = dominator;
         public IEnumerable<ASTBlock> GetOutbound(ASTBlock block) => block.Outbound;
         public IEnumerable<ASTBlock> GetInbound(ASTBlock block) => block.Inbound;
     }
@@ -122,90 +114,125 @@ partial class ScriptDecompiler
     {
         public ASTBlock Start { get; }
         public BackwardBlockIterator(ASTBlock start) => Start = start;
-        public int GetOrder(ASTBlock block) => block.PostOrderRevI;
-        public void SetOrder(ASTBlock block, int order) => block.PostOrderRevI = order;
-        public ASTBlock? GetImmediateDominator(ASTBlock block) => block.ImmediatePostDominator;
-        public void SetImmediateDominator(ASTBlock block, ASTBlock dominator) => block.ImmediatePostDominator = dominator;
         public IEnumerable<ASTBlock> GetOutbound(ASTBlock block) => block.Inbound;
         public IEnumerable<ASTBlock> GetInbound(ASTBlock block) => block.Outbound;
     }
 
-    private void SetPostOrderNumber() => SetPostOrder(new ForwardBlockIterator(ASTEntry));
-    private void SetPostOrderRevNumber() => SetPostOrder(new BackwardBlockIterator(astExit));
-
-    /// <remarks>Using depth-first traversal, post-order</remarks>
-    private void SetPostOrder(IBlockIterator it)
+    private class EdgeIgnoringBlockIterator : IBlockIterator
     {
-        var visited = new HashSet<ASTBlock>(blocksByOffset.Count);
-        var stack = new Stack<(ASTBlock, IEnumerator<ASTBlock>)>();
-        stack.Push((it.Start, it.GetOutbound(it.Start).GetEnumerator()));
-        int next = 0;
-        while (stack.Any())
-        {
-            var (parent, edgeIt) = stack.Pop();
-            visited.Add(parent);
-            if (edgeIt.MoveNext())
-            {
-                var child = edgeIt.Current;
-                stack.Push((parent, edgeIt));
-                if (!visited.Contains(child))
-                    stack.Push((child, it.GetOutbound(child).GetEnumerator()));
-            }
-            else
-                it.SetOrder(parent, next++);
-        }
+        public required IBlockIterator Parent { get; init; }
+        public required HashSet<(int, int)> IgnoreEdges { get; init; }
+
+        public ASTBlock Start => Parent.Start;
+        public IEnumerable<ASTBlock> GetOutbound(ASTBlock block) => FilterEdges(block, Parent.GetOutbound(block));
+        public IEnumerable<ASTBlock> GetInbound(ASTBlock block) => FilterEdges(block, Parent.GetInbound(block));
+        private IEnumerable<ASTBlock> FilterEdges(ASTBlock block, IEnumerable<ASTBlock> targets) => targets
+            .Where(other => !IgnoreEdges.Contains((block.StartTotalOffset, other.StartTotalOffset)) &&
+                            !IgnoreEdges.Contains((other.StartTotalOffset, block.StartTotalOffset)));
     }
 
-    private void SetPreDominators() => SetDominators(new ForwardBlockIterator(ASTEntry));
-    private void SetPostDominators() => SetDominators(new BackwardBlockIterator(astExit));
-
-    /// <remarks>Cooper, Harvey, Kennedy - "A Simple, Fast Dominance Algorithm"</remarks>
-    private void SetDominators(IBlockIterator it)
+    private class DominanceTree
     {
-        var revOrderBlocks = blocksByOffset.Values
-            .Except(new[] { it.Start })
-            .OrderByDescending(it.GetOrder)
-            .ToArray();
-        it.SetImmediateDominator(it.Start, it.Start);
+        private readonly IBlockIterator iterator;
+        private readonly Dictionary<ASTBlock, ASTBlock?> immediate = new();
+        private readonly Dictionary<ASTBlock, int> orderNumber = new();
 
-        bool changed;
-        do
+        public DominanceTree(IBlockIterator iterator)
         {
-            changed = false;
-            foreach (var block in revOrderBlocks)
+            this.iterator = iterator;
+            SetPostOrder();
+            SetDominators();
+        }
+
+        public IEnumerable<ASTBlock> Get(ASTBlock block)
+        {
+            ASTBlock? cur, next = immediate[block];
+            if (next == null)
+                yield break;
+            do
             {
-                var inbound = it.GetInbound(block)
-                    .Where(b => it.GetImmediateDominator(b) != null);
-                if (!inbound.Any())
-                    continue;
+                yield return next;
+                cur = next;
+                next = immediate[cur];
+            } while (next != null && next != cur);
+        }
 
-                var oldDominator = it.GetImmediateDominator(block);
-                var newDominator = inbound.Aggregate(Intersect!) ?? block;
-                if (oldDominator != newDominator)
+        public bool Dominates(ASTBlock from, ASTBlock to) => Get(to).Contains(from);
+
+        private void SetPostOrder()
+        {
+            var it = iterator;
+            var visited = new HashSet<ASTBlock>();
+            var stack = new Stack<(ASTBlock, IEnumerator<ASTBlock>)>();
+            stack.Push((it.Start, it.GetOutbound(it.Start).GetEnumerator()));
+            int next = 0;
+            while (stack.Any())
+            {
+                var (parent, edgeIt) = stack.Pop();
+                visited.Add(parent);
+                if (edgeIt.MoveNext())
                 {
-                    it.SetImmediateDominator(block, newDominator);
-                    changed = true;
+                    var child = edgeIt.Current;
+                    stack.Push((parent, edgeIt));
+                    if (!visited.Contains(child))
+                        stack.Push((child, it.GetOutbound(child).GetEnumerator()));
                 }
+                else
+                    orderNumber[parent] = next++;
             }
-        } while (changed);
+        }
 
-        ASTBlock? Intersect(ASTBlock b1, ASTBlock b2)
+        /// <remarks>Cooper, Harvey, Kennedy - "A Simple, Fast Dominance Algorithm"</remarks>
+        private void SetDominators()
+        {
+            var it = iterator;
+            var revOrderBlocks = orderNumber.Keys
+                .Except(new[] { it.Start })
+                .OrderByDescending(b => orderNumber[b])
+                .ToArray();
+            foreach (var block in revOrderBlocks)
+                immediate[block] = null;
+            immediate[it.Start] = it.Start;
+
+            bool changed;
+            do
+            {
+                changed = false;
+                foreach (var block in revOrderBlocks)
+                {
+                    var inbound = it.GetInbound(block)
+                        .Where(b => immediate[b] != null);
+                    if (!inbound.Any())
+                        continue;
+
+                    var oldDominator = immediate[block];
+                    var newDominator = inbound.Aggregate(Intersect!) ?? block;
+                    if (oldDominator != newDominator)
+                    {
+                        immediate[block] = newDominator;
+                        changed = true;
+                    }
+                }
+            } while (changed);
+        }
+
+        private ASTBlock? Intersect(ASTBlock b1, ASTBlock b2)
         {
             if (b1 == null)
                 return null;
             while (b1 != b2)
             {
-                while (it.GetOrder(b1) < it.GetOrder(b2))
+                while (orderNumber[b1] < orderNumber[b2])
                 {
-                    if (b1 == it.GetImmediateDominator(b1))
+                    if (b1 == immediate[b1])
                         return null;
-                    b1 = it.GetImmediateDominator(b1)!;
+                    b1 = immediate[b1]!;
                 }
-                while(it.GetOrder(b2) < it.GetOrder(b1))
+                while (orderNumber[b2] < orderNumber[b1])
                 {
-                    if (b2 == it.GetImmediateDominator(b2))
+                    if (b2 == immediate[b2])
                         return null;
-                    b2 = it.GetImmediateDominator(b2)!;
+                    b2 = immediate[b2]!;
                 }
             }
             return b1;
@@ -217,7 +244,7 @@ partial class ScriptDecompiler
         var headers = new HashSet<ASTBlock>();
         var allLoops = new List<GroupingConstruct>();
         var backEdges = blocksByOffset.Values.SelectMany(header => header.Inbound
-            .Where(bodyEnd => header.PreDominates(bodyEnd))
+            .Where(bodyEnd => preDominance.Dominates(header, bodyEnd))
             .Select(bodyEnd => (header, bodyEnd)));
         foreach (var (header, bodyEnd) in backEdges)
         {
@@ -272,12 +299,12 @@ partial class ScriptDecompiler
         var headers = blocksByOffset.Values
             .Where(b => b.Parent == null)
             .Where(b => b.Outbound.Count() > 1)
-            .Where(b => b.Inbound.All(i => !b.PreDominates(i))); // no back edges
+            .Where(b => b.Inbound.All(i => !preDominance.Dominates(b, i))); // no back edges
         var allSelections = new List<GroupingConstruct>();
         foreach (var header in headers)
         {
             var mergeBlock = header.Outbound
-                .Select(b => b.PostDominators.Prepend(b))
+                .Select(b => postDominance.Get(b).Prepend(b))
                 .Aggregate((a, b) => a.Intersect(b).ToArray())
                 .FirstOrDefault();
             if (mergeBlock == null) // You remember that loops have no dominator info calculated?

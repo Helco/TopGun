@@ -15,6 +15,8 @@ public partial class ScriptDecompiler
 
     private ASTBlock ASTEntry => blocksByOffset[0];
 
+    private DominanceTree preDominance = null!;
+    private DominanceTree postDominance = null!;
     private int nextTmpIndex = 0;
     private Dictionary<int, ASTBlock> blocksByOffset = new();
 
@@ -42,11 +44,9 @@ public partial class ScriptDecompiler
         CreateInitialBlocks();
         SetBlockEdges();
         DebugPrintBlockEdges();
-        SetPostOrderNumber();
-        SetPostOrderRevNumber();
-        SetPreDominators();
-        SetPostDominators();
-
+        preDominance = new DominanceTree(new ForwardBlockIterator(ASTEntry));
+        postDominance = new DominanceTree(new BackwardBlockIterator(astExit));
+        
         // Constructs
         var loops = DetectLoops();
         var selections = DetectSelections();

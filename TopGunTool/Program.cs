@@ -183,7 +183,7 @@ internal class Program
             //var scriptOutput = Console.Out;
             foreach (var (index, res) in resourceFile.Resources.Select((r, i) => (i, r)).Where(t => t.r.Type == ResourceType.Script))
             {
-                if (index != 37) continue;
+                if (index != 77) continue;
                 var scriptFull = resourceFile.ReadResource(res);
 
                 scriptOutput.WriteLine();
