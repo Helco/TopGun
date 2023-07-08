@@ -246,20 +246,43 @@ partial class ScriptDecompiler
     {
         var earlyExitNodes = astExit.Inbound
             .OfType<ASTNormalBlock>()
-            .Where(b => b.Instructions.Last() is ASTRootOpInstruction { RootInstruction.Op: ScriptOp.Exit });
+            .Where(b => b.Instructions.Last() is ASTRootOpInstruction { RootInstruction.Op: ScriptOp.Exit })
+            .ToHashSet<ASTBlock>();
 
-        return earlyExitNodes
-            .SelectMany(exitNode => postDominance.GetDominatees(exitNode).Append(exitNode)
-                .SelectMany(postDom => postDom.Inbound.Select(
-                    branch => (exitNode, postDom, branch))))
-            .Where(t => !postDominance.Dominates(t.branch, t.exitNode))
-            .Select(t => (t.branch.StartTotalOffset, t.postDom.StartTotalOffset))
-            .ToHashSet();
+        // there are structures where a branch leads into a second branch which 
+        // leads always into different early-exits -_-
+        // we have to find these cases and instead treat the second branch as an exit node 
+        (ASTBlock exit, ASTBlock postDom, ASTBlock branch)[] edges;
+        bool changed;
+        do
+        {
+            changed = false;
+            edges = FindControllingEdgesFor(earlyExitNodes);
+            
+            var mergingEdges = edges
+                .GroupBy(t => t.branch)
+                .Where(edgeGroup => !edgeGroup.Key.Outbound
+                    .Except(edgeGroup.Select(t => t.postDom))
+                    .Any());
+            foreach (var edgeGroup in mergingEdges)
+            {
+                // branch always leads to early-exit, it is itself an early-exit
+                foreach (var (exit, _, _) in edgeGroup)
+                    earlyExitNodes.Remove(exit);
+                earlyExitNodes.Add(edgeGroup.Key);
+                changed = true;
+            }
+        } while (changed);
 
-        // we do not care about which controlling edge belongs to which early exit node
-        // we just remove all controlling edges from all early exit nodes and hope that
-        // the resulting post-dominance tree is normalized in regards to selection control flow
+        return edges.Select(t => (t.branch.StartTotalOffset, t.postDom.StartTotalOffset)).ToHashSet();
     }
+
+    private (ASTBlock exit, ASTBlock postDom, ASTBlock branch)[] FindControllingEdgesFor(IEnumerable<ASTBlock> earlyExitNodes) => earlyExitNodes
+        .SelectMany(exitNode => postDominance.GetDominatees(exitNode).Append(exitNode)
+            .SelectMany(postDom => postDom.Inbound.Select(
+                branch => (exitNode, postDom, branch))))
+        .Where(t => !postDominance.Dominates(t.branch, t.exitNode))
+        .ToArray();
 
     private List<GroupingConstruct> DetectLoops()
     {
