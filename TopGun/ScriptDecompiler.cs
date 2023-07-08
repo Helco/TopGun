@@ -44,6 +44,7 @@ public partial class ScriptDecompiler
         // Control flow analysis
         CreateInitialBlocks();
         SetBlockEdges();
+        RemoveUnreachableJumps();
         DebugPrintBlockEdges();
         preDominance = new DominanceTree(new ForwardBlockIterator(ASTEntry));
         postDominance = new DominanceTree(new BackwardBlockIterator(astExit));

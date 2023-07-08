@@ -94,6 +94,26 @@ partial class ScriptDecompiler
         }
     }
 
+    private void RemoveUnreachableJumps()
+    {
+        // a symptom-based fix: With switches there can be early-exits with Jumps happening after.
+        // this causes an unreachable block containing only a Jump which we can ignore and delete
+        // we have to do something as otherwise the dominance algorithm fails.
+        var unreachableBlocks = blocksByOffset.Values
+            .Where(b => b.StartTotalOffset > 0 && !b.Inbound.Any())
+            .OfType<ASTNormalBlock>()
+            .ToArray();
+        foreach (var block in unreachableBlocks)
+        {
+            if (block.Instructions.Count != 1 ||
+                (block.Instructions.Single() as ASTRootOpInstruction)?.RootInstruction.Op != ScriptOp.Jump)
+                throw new NotSupportedException("Unreachable block contains unexpected instructions");
+            blocksByOffset.Remove(block.StartTotalOffset);
+            foreach (var outbound in block.Outbound)
+                outbound.InboundOffsets.Remove(block.StartTotalOffset);
+        }
+    }
+
     private interface IBlockIterator
     {
         ASTBlock Start { get; }
