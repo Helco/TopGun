@@ -774,7 +774,7 @@ partial class ScriptDecompiler
             {
                 writer.WriteLine("while ({");
                 Condition.WriteTo(subWriter);
-                writer.Write("}) {");
+                writer.WriteLine("}) {");
                 Body.WriteTo(subWriter);
                 writer.WriteLine("}");
             }

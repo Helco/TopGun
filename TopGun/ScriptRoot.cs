@@ -1113,7 +1113,7 @@ public readonly struct ScriptRootInstruction
                 args = new List<Arg>(2 + caseCount * 3)
                 {
                     new(value, valueInd, "value"),
-                    new(defaultJump, false, "defaultJump")
+                    new(defaultJump, ArgType.InstructionOffset, "defaultJump")
                 };
                 for (int i = 0; i < caseCount; i++)
                 {
@@ -1138,7 +1138,7 @@ public readonly struct ScriptRootInstruction
                 caseScript = reader.RestBuffer[(offsetToCases - offsetToFirstBody)..];
                 args = new List<Arg>(1 + caseCount * 3)
                 {
-                    new(defaultJump, false, "defaultJump")
+                    new(defaultJump, ArgType.InstructionOffset, "defaultJump")
                 };
                 for (int i = 0; i < caseCount; i++)
                 {

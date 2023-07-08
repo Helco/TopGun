@@ -139,6 +139,8 @@ public partial class ScriptDecompiler
         while (!rootReader.EndOfSpan)
         {
             var rootInstruction = new ScriptRootInstruction(ref rootReader);
+            if (rootInstruction.Op is ScriptOp.Case)
+                continue;
             var calcBody = CreateInitialCalcAST(rootInstruction.Data, rootInstruction.DataOffset);
 
             var astInstruction = new ASTRootOpInstruction()
