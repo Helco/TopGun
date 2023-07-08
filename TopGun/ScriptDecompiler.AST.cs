@@ -815,4 +815,52 @@ partial class ScriptDecompiler
             writer.WriteLine("}");
         }
     }
+
+    private class ASTSwitch : ASTBlock
+    {
+        public readonly struct Case<TThen>
+        {
+            public required IReadOnlyList<int?> Compares { get; init; }
+            public required TThen Then { get; init; } 
+        }
+
+        public ASTBlock? Prefix { get; init; }
+        public required ASTBlock Value { get; init; }
+        public required IReadOnlyList<Case<int?>> CaseOffsets { get; init; }
+        public IEnumerable<Case<ASTBlock?>> CaseBlocks => CaseOffsets
+            .Select(c => new Case<ASTBlock?>()
+            {
+                Compares = c.Compares,
+                Then = c.Then == null ? null : BlocksByOffset[c.Then.Value]
+            });
+        public override IEnumerable<ASTNode> Children => base.Children
+            .Concat(new[] { Prefix, Value })
+            .Concat(CaseBlocks.Select(t => t.Then))
+            .Where(b => b != null)!;
+        public override bool CanFallthrough => false;
+
+        protected override void WriteToInternal(CodeWriter writer)
+        {
+            using var subWriter = writer.Indented;
+            Prefix?.WriteTo(writer);
+            writer.WriteLine("switch ({");
+            Value?.WriteTo(subWriter);
+            writer.WriteLine("}) {");
+
+            foreach (var @case in CaseBlocks)
+            {
+                foreach (var compare in @case.Compares)
+                {
+                    if (compare.HasValue)
+                        writer.WriteLine($"case {compare}:");
+                    else
+                        writer.WriteLine("default:");
+                }
+                @case.Then?.WriteTo(subWriter);
+                subWriter.WriteLine("break;");
+            }
+
+            writer.WriteLine("}");
+        }
+    }
 }

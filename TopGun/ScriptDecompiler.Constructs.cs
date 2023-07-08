@@ -230,6 +230,79 @@ partial class ScriptDecompiler
     {
         public override void Construct()
         {
+            var lastInstruction = ((ASTRootOpInstruction)((ASTNormalBlock)Header).Instructions.Last()).RootInstruction;
+            int argIndex = 0;
+            ASTBlock? astPrefix = null;
+            ASTBlock astValue;
+            if (lastInstruction.Op == ScriptOp.Switch)
+            {
+                argIndex++;
+                astPrefix = Header;
+                ((ASTNormalBlock)astPrefix).LastInstructionIsRedundantControlFlow = true;
+                astValue = new ASTNormalBlock()
+                {
+                    BlocksByOffset = Header.BlocksByOffset,
+                    Instructions = new()
+                    {
+                        new ASTReturn()
+                        {
+                            Value = Decompiler.ExpressionFromRootArg(lastInstruction.Args[0])
+                        }
+                    }
+                };
+                astValue.FixChildrenParents();
+                Header.BlocksByOffset[-Header.StartTotalOffset] = astValue;
+            }
+            else
+                astValue = Header;
+
+            var compareCount = (lastInstruction.Args.Count - argIndex - 1) / 2;
+            var caseOffsets = Enumerable
+                .Range(0, compareCount)
+                .Select(i => (
+                    compare: lastInstruction.Args[argIndex + 1 + i * 2].Value as int?,
+                    then: lastInstruction.Args[argIndex + 2 + i * 2].Value))
+                .Append((
+                    compare: null, // default jump
+                    then: lastInstruction.Args[argIndex].Value))
+                .Select(t => (t.compare, then: t.then + lastInstruction.Offset))
+                .GroupBy(t => t.then)
+                .Select(g => new ASTSwitch.Case<int?>()
+                {
+                    Compares = g.Select(t => t.compare).ToArray(),
+                    Then = g.Key == Merge.StartTotalOffset ? null : g.Key
+                })
+                .ToArray();
+            var astSwitch = new ASTSwitch()
+            {
+                BlocksByOffset = Header.BlocksByOffset,
+                Prefix = astPrefix,
+                Value = astValue,
+                CaseOffsets = caseOffsets,
+                ContinueOffset = Merge == (Parent as Selection)?.Merge ? null : Merge.StartTotalOffset,
+                StartOwnOffset = Header.StartTotalOffset,
+                EndOwnOffset = Header.EndTotalOffset
+            };
+            Header.BlocksByOffset[Header.StartTotalOffset] = astSwitch;
+            foreach (var lastBlock in Merge.Inbound.Intersect(Body))
+            {
+                lastBlock.ConstructProvidesControlFlow = true;
+                if (lastBlock is ASTNormalBlock lastNormalBlock)
+                    // case blocks always end with a jump as a (Calc)Switch statement
+                    // is always followed by the necessary Case statements causing a Jump instruction
+                    lastNormalBlock.LastInstructionIsRedundantControlFlow = true;
+            }
+            Header.Parent = astSwitch;
+            astValue.Parent = astSwitch;
+            foreach (var body in Body)
+                body.Parent = astSwitch;
+
+            if (Parent != null)
+            {
+                Parent.Body.ExceptWith(Body);
+                Parent.Body.Remove(Header);
+                Parent.Body.Add(astSwitch);
+            }
         }
     }
 
