@@ -157,6 +157,8 @@ partial class ScriptDecompiler
             } while (next != null && next != cur);
         }
 
+        public IEnumerable<ASTBlock> GetDominatees(ASTBlock dom) => immediate.Keys.Where(to => Dominates(dom, to));
+
         public bool Dominates(ASTBlock from, ASTBlock to) => Get(to).Contains(from);
 
         private void SetPostOrder()
@@ -239,6 +241,26 @@ partial class ScriptDecompiler
         }
     }
 
+    /// <remarks>Olga Nicole Volgin - "Analysis of Flow of Control for Reverse Engineering of Sequence Diagrams" - Section 5.4</remarks>
+    private HashSet<(int, int)> FindControllingEdgesAtExit()
+    {
+        var earlyExitNodes = astExit.Inbound
+            .OfType<ASTNormalBlock>()
+            .Where(b => b.Instructions.Last() is ASTRootOpInstruction { RootInstruction.Op: ScriptOp.Exit });
+
+        return earlyExitNodes
+            .SelectMany(exitNode => postDominance.GetDominatees(exitNode).Append(exitNode)
+                .SelectMany(postDom => postDom.Inbound.Select(
+                    branch => (exitNode, postDom, branch))))
+            .Where(t => !postDominance.Dominates(t.branch, t.exitNode))
+            .Select(t => (t.branch.StartTotalOffset, t.postDom.StartTotalOffset))
+            .ToHashSet();
+
+        // we do not care about which controlling edge belongs to which early exit node
+        // we just remove all controlling edges from all early exit nodes and hope that
+        // the resulting post-dominance tree is normalized in regards to selection control flow
+    }
+
     private List<GroupingConstruct> DetectLoops()
     {
         var headers = new HashSet<ASTBlock>();
@@ -303,15 +325,21 @@ partial class ScriptDecompiler
         var allSelections = new List<GroupingConstruct>();
         foreach (var header in headers)
         {
-            var mergeBlock = header.Outbound
-                .Select(b => postDominance.Get(b).Prepend(b))
-                .Aggregate((a, b) => a.Intersect(b).ToArray())
-                .FirstOrDefault();
-            if (mergeBlock == null) // You remember that loops have no dominator info calculated?
-                throw new NotSupportedException("Could not find merge block for selection");
+            var filteredBranches = header.Outbound.Where(branch => !controllingEdgesAtExit.Contains((header.StartTotalOffset, branch.StartTotalOffset)));
+            ASTBlock? mergeBlock;
+
+            if (filteredBranches.Count() > 1)
+                mergeBlock = header.Outbound
+                    .Select(b => postDominance.Get(b).Prepend(b))
+                    .Aggregate((a, b) => a.Intersect(b).ToArray())
+                    .First(); // there will always be one due to the exit node
+            else if (filteredBranches.Count() == 1) // no longer a merging selection
+                mergeBlock = filteredBranches.Single();
+            else
+                throw new NotSupportedException("I have not thought about selections that always early-exit");
 
             var branches = header.Outbound
-                .Select(branch => FindReachableFromTo(new(), branch, mergeBlock, new ForwardBlockIterator(ASTEntry)))
+                .Select(branch => FindReachableFromTo(new(), branch, mergeBlock, new ForwardBlockIterator(ASTEntry)).Where(bodyBlock => bodyBlock == branch || preDominance.Dominates(branch, bodyBlock)).ToHashSet())
                 .ToArray();
             foreach (var branch in branches)
                 branch.Remove(mergeBlock);

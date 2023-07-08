@@ -19,6 +19,7 @@ public partial class ScriptDecompiler
     private DominanceTree postDominance = null!;
     private int nextTmpIndex = 0;
     private Dictionary<int, ASTBlock> blocksByOffset = new();
+    private HashSet<(int, int)> controllingEdgesAtExit = new();
 
     public ScriptDecompiler(ReadOnlySpan<byte> script, ResourceFile resFile)
     {
@@ -46,6 +47,13 @@ public partial class ScriptDecompiler
         DebugPrintBlockEdges();
         preDominance = new DominanceTree(new ForwardBlockIterator(ASTEntry));
         postDominance = new DominanceTree(new BackwardBlockIterator(astExit));
+        controllingEdgesAtExit = FindControllingEdgesAtExit();
+        if (controllingEdgesAtExit.Any())
+            postDominance = new DominanceTree(new EdgeIgnoringBlockIterator()
+            {
+                Parent = new BackwardBlockIterator(astExit),
+                IgnoreEdges = controllingEdgesAtExit
+            });
         
         // Constructs
         var loops = DetectLoops();
@@ -56,6 +64,7 @@ public partial class ScriptDecompiler
         DebugPrintConstructHierarchy(constructs);
         ConstructContinues();
 
+        DebugPrintBlockHierarchy();
         WriteTo(codeWriter);
 
         var unwrittenBlocks = blocksByOffset.Values.Where(b => b is not ASTExitBlock && b.StartTextPosition == default && b.EndTextPosition == default);
@@ -86,6 +95,35 @@ public partial class ScriptDecompiler
             using var subWriter = writer.Indented;
             foreach (var child in construct.Children.OrderBy(c => c.Body.Min(b => b.StartTotalOffset)))
                 Print(subWriter, child);
+        }
+    }
+
+    private void DebugPrintBlockHierarchy()
+    {
+        using var writer = new CodeWriter(Console.Out, disposeWriter: false);
+        var visited = new HashSet<ASTBlock>();
+        Print(writer, ASTEntry);
+
+        void Print(CodeWriter writer, ASTBlock block)
+        {
+            writer.WriteLine(block.ToString());
+            using var subWriter = writer.Indented;
+            if (!visited.Add(block))
+            {
+                subWriter.WriteLine("<DUPLICATED>");
+                return;
+            }
+            var childrenBlocks = block.Children
+                .OfType<ASTBlock>()
+                .Where(b => b != block.ContinueBlock)
+                .OrderBy(b => b.StartTotalOffset);
+            foreach (var child in childrenBlocks)
+                Print(subWriter, child);
+            if (block.ContinueBlock != null)
+            {
+                writer.Write("cont: ");
+                Print(writer, block.ContinueBlock);
+            }
         }
     }
 
