@@ -373,7 +373,7 @@ partial class ScriptDecompiler
             ASTBlock? mergeBlock;
 
             if (filteredBranches.Count() > 1)
-                mergeBlock = header.Outbound
+                mergeBlock = filteredBranches
                     .Select(b => postDominance.Get(b).Prepend(b))
                     .Aggregate((a, b) => a.Intersect(b).ToArray())
                     .First(); // there will always be one due to the exit node
