@@ -9,6 +9,8 @@ partial class ScriptDecompiler
     private abstract class GroupingConstruct
     {
         public required ScriptDecompiler Decompiler { get; init; }
+        public required int MergeOffset { get; init; }
+        public ASTBlock Merge => Decompiler.blocksByOffset[MergeOffset];
         public GroupingConstruct? Parent { get; set; }
         public List<GroupingConstruct> Children { get; } = new();
         public HashSet<ASTBlock> Body { get; init; } = new();
@@ -52,7 +54,8 @@ partial class ScriptDecompiler
             var dummyRoot = new DummyConstruct()
             {
                 Decompiler = null!,
-                Body = null!
+                Body = null!,
+                MergeOffset =-1
             };
             foreach (var child in allConstructs.OrderByDescending(c => c.Body.Count))
                 dummyRoot.AddChild(child);
@@ -106,7 +109,7 @@ partial class ScriptDecompiler
                 Condition = backTarget,
                 BodyOffset = loopEntry.StartTotalOffset,
                 Loop = Body,
-                ContinueOffset = externalOutbound?.StartTotalOffset
+                ContinueOffset = Merge == Parent?.Merge ? null : Merge.StartTotalOffset
             };
             foreach (var block in Body)
                 block.Parent = astLoop;
@@ -123,7 +126,6 @@ partial class ScriptDecompiler
     private abstract class Selection : GroupingConstruct
     {
         public ASTBlock Header { get; init; } = null!;
-        public ASTBlock Merge { get; init; } = null!;
     }
 
     private class JumpIfSelection : Selection
@@ -167,7 +169,7 @@ partial class ScriptDecompiler
                 Condition = astCondition,
                 ThenOffset = thenBlock?.StartTotalOffset,
                 ElseOffset = null,
-                ContinueOffset = Merge == (Parent as Selection)?.Merge ? null : Merge.StartTotalOffset,
+                ContinueOffset = Merge == Parent?.Merge ? null : Merge.StartTotalOffset,
                 StartOwnOffset = header.StartTotalOffset,
                 EndOwnOffset = header.EndTotalOffset
             };
@@ -205,7 +207,7 @@ partial class ScriptDecompiler
                 Condition = Header,
                 ThenOffset = thenOffset,
                 ElseOffset = elseOffset == Merge.StartTotalOffset ? null : elseOffset,
-                ContinueOffset = Merge == (Parent as Selection)?.Merge ? null : Merge.StartTotalOffset,
+                ContinueOffset = Merge == Parent?.Merge ? null : Merge.StartTotalOffset,
                 StartOwnOffset = Header.StartTotalOffset,
                 EndOwnOffset = Header.EndTotalOffset
             };
@@ -279,7 +281,7 @@ partial class ScriptDecompiler
                 Prefix = astPrefix,
                 Value = astValue,
                 CaseOffsets = caseOffsets,
-                ContinueOffset = Merge == (Parent as Selection)?.Merge ? null : Merge.StartTotalOffset,
+                ContinueOffset = Merge == Parent?.Merge ? null : Merge.StartTotalOffset,
                 StartOwnOffset = Header.StartTotalOffset,
                 EndOwnOffset = Header.EndTotalOffset
             };

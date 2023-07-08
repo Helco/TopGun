@@ -302,7 +302,8 @@ partial class ScriptDecompiler
             {
                 Decompiler = this,
                 Header = header,
-                Body = body
+                Body = body,
+                MergeOffset = postDominance.Get(header).First().StartTotalOffset
             });
         }
 
@@ -384,7 +385,7 @@ partial class ScriptDecompiler
                     Decompiler = this,
                     Header = header,
                     Body = body,
-                    Merge = mergeBlock
+                    MergeOffset = mergeBlock.StartTotalOffset
                 },
                 ScriptOp.JumpIfCalc or
                 ScriptOp.JumpIfCalc_dup => new JumpIfCalcSelection()
@@ -392,7 +393,7 @@ partial class ScriptDecompiler
                     Decompiler = this,
                     Header = header,
                     Body = body,
-                    Merge = mergeBlock
+                    MergeOffset = mergeBlock.StartTotalOffset
                 },
                 ScriptOp.Switch or
                 ScriptOp.CalcSwitch => new SwitchSelection()
@@ -400,7 +401,7 @@ partial class ScriptDecompiler
                     Decompiler = this,
                     Header = header,
                     Body = body,
-                    Merge = mergeBlock
+                    MergeOffset = mergeBlock.StartTotalOffset
                 },
                 _ => throw new Exception("Somehow selection header has unknown last instruction")
             });
