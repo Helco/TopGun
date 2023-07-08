@@ -109,7 +109,9 @@ partial class ScriptDecompiler
                 Condition = backTarget,
                 BodyOffset = loopEntry.StartTotalOffset,
                 Loop = Body,
-                ContinueOffset = Merge == Parent?.Merge ? null : Merge.StartTotalOffset
+                ContinueOffset = Merge == Parent?.Merge ? null : Merge.StartTotalOffset,
+                InboundOffsets = Header.InboundOffsets,
+                OutboundOffsets = Header.OutboundOffsets
             };
             foreach (var block in Body)
                 block.Parent = astLoop;
@@ -171,7 +173,9 @@ partial class ScriptDecompiler
                 ElseOffset = null,
                 ContinueOffset = Merge == Parent?.Merge ? null : Merge.StartTotalOffset,
                 StartOwnOffset = header.StartTotalOffset,
-                EndOwnOffset = header.EndTotalOffset
+                EndOwnOffset = header.EndTotalOffset,
+                InboundOffsets = Header.InboundOffsets,
+                OutboundOffsets = Header.OutboundOffsets
             };
             Header.BlocksByOffset[header.StartTotalOffset] = astIfElse;
             foreach (var lastBlock in Merge.Inbound.Intersect(Body))
@@ -209,7 +213,9 @@ partial class ScriptDecompiler
                 ElseOffset = elseOffset == Merge.StartTotalOffset ? null : elseOffset,
                 ContinueOffset = Merge == Parent?.Merge ? null : Merge.StartTotalOffset,
                 StartOwnOffset = Header.StartTotalOffset,
-                EndOwnOffset = Header.EndTotalOffset
+                EndOwnOffset = Header.EndTotalOffset,
+                InboundOffsets = Header.InboundOffsets,
+                OutboundOffsets = Header.OutboundOffsets
             };
             Header.BlocksByOffset[Header.StartTotalOffset] = astIfElse;
 
@@ -283,7 +289,9 @@ partial class ScriptDecompiler
                 CaseOffsets = caseOffsets,
                 ContinueOffset = Merge == Parent?.Merge ? null : Merge.StartTotalOffset,
                 StartOwnOffset = Header.StartTotalOffset,
-                EndOwnOffset = Header.EndTotalOffset
+                EndOwnOffset = Header.EndTotalOffset,
+                InboundOffsets = Header.InboundOffsets,
+                OutboundOffsets = Header.OutboundOffsets
             };
             Header.BlocksByOffset[Header.StartTotalOffset] = astSwitch;
             foreach (var lastBlock in Merge.Inbound.Intersect(Body))
