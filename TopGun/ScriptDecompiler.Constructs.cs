@@ -164,7 +164,13 @@ partial class ScriptDecompiler
         protected void CleanupBranchControlFlow()
         {
             foreach (var lastBlock in Merge.Inbound.Intersect(Body))
+            {
                 lastBlock.ConstructProvidesControlFlow = true;
+                if (lastBlock is ASTNormalBlock normalBlock &&
+                    lastBlock.LastRootInstruction.Op == ScriptOp.Jump && 
+                    lastBlock.LastRootInstruction.Offset + lastBlock.LastRootInstruction.Args[0].Value == MergeOffset)
+                    normalBlock.LastInstructionIsRedundantControlFlow = true;
+            }
         }
     }
 
@@ -261,15 +267,6 @@ partial class ScriptDecompiler
 
             FinalizeConstructAndParents(astSwitch);
             CleanupBranchControlFlow();
-
-            foreach (var lastBlock in Merge.Inbound.Intersect(Body))
-            {
-                if (lastBlock is ASTNormalBlock lastNormalBlock)
-                    // case blocks always end with a jump as a (Calc)Switch statement
-                    // is always followed by the necessary Case statements causing a Jump instruction
-                    // (fallthrough blocks do not end with a Jump but are not merge inbounds either)
-                    lastNormalBlock.LastInstructionIsRedundantControlFlow = true;
-            }
         }
 
         private IReadOnlyList<ASTSwitch.Case<int?>> CreateCaseOffsets(int argIndex)
