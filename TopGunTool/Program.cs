@@ -173,9 +173,10 @@ internal class Program
     {
         var allPaths = Directory.GetFiles(@"C:\dev\TopGun\games", "*.bin", SearchOption.AllDirectories);
         var allResFiles = new List<ResourceFile>();
+        var scriptCount = 0;
         foreach (var resFilePath in allPaths)
         {
-            if (!resFilePath.Contains("TAMA.BIN"))
+            if (!resFilePath.Contains("tama"))
                 continue;
 
             var resourceFile = new ResourceFile(resFilePath);
@@ -183,7 +184,6 @@ internal class Program
             //var scriptOutput = Console.Out;
             foreach (var (index, res) in resourceFile.Resources.Select((r, i) => (i, r)).Where(t => t.r.Type == ResourceType.Script))
             {
-                if (index != 3925) continue;
                 var scriptFull = resourceFile.ReadResource(res);
 
                 scriptOutput.WriteLine();
@@ -192,8 +192,11 @@ internal class Program
 
                 var decompiler = new ScriptDecompiler(scriptFull, resourceFile);
                 decompiler.DecompileCalcAndPrintAll(scriptOutput);
+                
+                scriptCount++;
             }
         }
+        Console.WriteLine($"Decompiled {scriptCount} scripts");
     }
 
     static void MainPrintScripts(string[] args)

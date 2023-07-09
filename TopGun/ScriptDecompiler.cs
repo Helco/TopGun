@@ -8,6 +8,17 @@ namespace TopGun;
 
 public partial class ScriptDecompiler
 {
+    [Flags]
+    public enum DebugFlags
+    {
+        None = 0,
+        All = ~0,
+
+        PrintBlockEdges = 1 << 0,
+        PrintConstructHierarchy = 1 << 1,
+        PrintBlockHierarchy = 1 << 2,
+    }
+
     private readonly byte[] script;
     private readonly int globalVarCount;
     private readonly ResourceFile resFile;
@@ -21,6 +32,8 @@ public partial class ScriptDecompiler
     private Dictionary<int, ASTBlock> blocksByOffset = new();
     private HashSet<int> earlyExitOffsets = new();
     private HashSet<(int, int)> controllingEdgesAtExit = new();
+
+    public DebugFlags Debug { get; set; } = DebugFlags.None;
 
     public ScriptDecompiler(ReadOnlySpan<byte> script, ResourceFile resFile)
     {
@@ -76,6 +89,8 @@ public partial class ScriptDecompiler
 
     private void DebugPrintBlockEdges()
     {
+        if (!Debug.HasFlag(DebugFlags.PrintBlockEdges))
+            return;
         foreach (var block in blocksByOffset.Values)
         {
             foreach (var outBlock in block.Outbound)
@@ -85,6 +100,8 @@ public partial class ScriptDecompiler
 
     private void DebugPrintConstructHierarchy(IEnumerable<GroupingConstruct> rootConstructs)
     {
+        if (!Debug.HasFlag(DebugFlags.PrintConstructHierarchy))
+            return;
         using var writer = new CodeWriter(Console.Out, disposeWriter: false);
         foreach (var construct in rootConstructs)
             Print(writer, construct);
@@ -102,6 +119,8 @@ public partial class ScriptDecompiler
 
     private void DebugPrintBlockHierarchy()
     {
+        if (!Debug.HasFlag(DebugFlags.PrintBlockHierarchy))
+            return;
         using var writer = new CodeWriter(Console.Out, disposeWriter: false);
         var visited = new HashSet<ASTBlock>();
         Print(writer, ASTEntry);
