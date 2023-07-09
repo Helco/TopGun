@@ -382,11 +382,14 @@ partial class ScriptDecompiler
             else
                 throw new NotSupportedException("I have not thought about selections that always early-exit");
 
-            var branches = header.Outbound
+            var branchHeaders = header.Outbound.ToArray();
+            var branches = branchHeaders
                 .Select(branch => FindReachableFromTo(new(), branch, mergeBlock, new ForwardBlockIterator(ASTEntry)).Where(bodyBlock => bodyBlock == branch || preDominance.Dominates(branch, bodyBlock)).ToHashSet())
                 .ToArray();
             foreach (var branch in branches)
                 branch.Remove(mergeBlock);
+
+            var branchFallthroughs = new HashSet<(int from, int to)>();
             for (int i = 0; i < branches.Length; i++)
             {
                 for (int j = i + 1; j < branches.Length; j++)
@@ -394,7 +397,17 @@ partial class ScriptDecompiler
                     if (branches[i].Overlaps(branches[j]))
                         throw new NotSupportedException("Unsupported selection with merged branches");
                 }
+                if (branchHeaders[i] != mergeBlock)
+                {
+                    foreach (var otherBranch in branchHeaders.Except(new[] { branchHeaders[i] }))
+                    {
+                        if (postDominance.Dominates(branchHeaders[i], otherBranch))
+                            branchFallthroughs.Add((otherBranch.StartTotalOffset, branchHeaders[i].StartTotalOffset));
+                    }
+                }
             }
+            if (branchFallthroughs.GroupBy(t => t.to).Any(g => g.Count() > 1))
+                throw new NotSupportedException("Unsupported multiple fallthroughs to the same target");
 
             var body = branches.SelectMany(a => a).Prepend(header).ToHashSet();
             var lastOp = ((ASTRootOpInstruction)((ASTNormalBlock)header).Instructions.Last()).RootInstruction.Op;
@@ -405,7 +418,8 @@ partial class ScriptDecompiler
                     Decompiler = this,
                     Header = header,
                     Body = body,
-                    MergeOffset = mergeBlock.StartTotalOffset
+                    MergeOffset = mergeBlock.StartTotalOffset,
+                    BranchFallthroughs = branchFallthroughs
                 },
                 ScriptOp.JumpIfCalc or
                 ScriptOp.JumpIfCalc_dup => new JumpIfCalcSelection()
@@ -413,7 +427,8 @@ partial class ScriptDecompiler
                     Decompiler = this,
                     Header = header,
                     Body = body,
-                    MergeOffset = mergeBlock.StartTotalOffset
+                    MergeOffset = mergeBlock.StartTotalOffset,
+                    BranchFallthroughs = branchFallthroughs
                 },
                 ScriptOp.Switch or
                 ScriptOp.CalcSwitch => new SwitchSelection()
@@ -421,7 +436,8 @@ partial class ScriptDecompiler
                     Decompiler = this,
                     Header = header,
                     Body = body,
-                    MergeOffset = mergeBlock.StartTotalOffset
+                    MergeOffset = mergeBlock.StartTotalOffset,
+                    BranchFallthroughs = branchFallthroughs
                 },
                 _ => throw new Exception("Somehow selection header has unknown last instruction")
             });

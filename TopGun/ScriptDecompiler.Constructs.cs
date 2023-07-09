@@ -128,6 +128,7 @@ partial class ScriptDecompiler
     private abstract class Selection : GroupingConstruct
     {
         public ASTBlock Header { get; init; } = null!;
+        public HashSet<(int from, int to)> BranchFallthroughs { get; init; } = new();
     }
 
     private class JumpIfSelection : Selection
@@ -136,6 +137,8 @@ partial class ScriptDecompiler
         {
             if (Header.Outbound.Count() != 2)
                 throw new Exception("Something went wrong trying to construct a JumpIf");
+            if (BranchFallthroughs.Any())
+                throw new NotSupportedException("JumpIf selections do not support branch fallthroughs");
 
             var lastInstruction = ((ASTRootOpInstruction)((ASTNormalBlock)Header).Instructions.Last()).RootInstruction;
             var jumpTarget = lastInstruction.Offset + lastInstruction.Args[0].Value;
@@ -200,6 +203,8 @@ partial class ScriptDecompiler
         {
             if (Header.Outbound.Count() > 2)
                 throw new Exception("Something went wrong trying to construct a JumpIfCalc construct");
+            if (BranchFallthroughs.Any())
+                throw new NotSupportedException("JumpIfCalc selections do not support branch fallthroughs");
 
             var lastInstruction = ((ASTRootOpInstruction)((ASTNormalBlock)Header).Instructions.Last()).RootInstruction;
             var thenOffset = lastInstruction.Offset + lastInstruction.Args[0].Value;
@@ -265,22 +270,45 @@ partial class ScriptDecompiler
                 astValue = Header;
 
             var compareCount = (lastInstruction.Args.Count - argIndex - 1) / 2;
-            var caseOffsets = Enumerable
+            var explicitCaseOffsets = Enumerable
                 .Range(0, compareCount)
                 .Select(i => (
                     compare: lastInstruction.Args[argIndex + 1 + i * 2].Value as int?,
-                    then: lastInstruction.Args[argIndex + 2 + i * 2].Value))
-                .Append((
+                    then: lastInstruction.Args[argIndex + 2 + i * 2].Value));
+            if (lastInstruction.Args[argIndex].Value != Merge.StartTotalOffset)
+                explicitCaseOffsets = explicitCaseOffsets.Append((
                     compare: null, // default jump
-                    then: lastInstruction.Args[argIndex].Value))
-                .Select(t => (t.compare, then: t.then + lastInstruction.Offset))
+                    then: lastInstruction.Args[argIndex].Value));
+            var caseOffsets = explicitCaseOffsets.Select(t => (t.compare, then: t.then + lastInstruction.Offset))
                 .GroupBy(t => t.then)
                 .Select(g => new ASTSwitch.Case<int?>()
                 {
                     Compares = g.Select(t => t.compare).ToArray(),
-                    Then = g.Key == Merge.StartTotalOffset ? null : g.Key
+                    Then = g.Key == Merge.StartTotalOffset ? null : g.Key,
+                    Breaks = true
                 })
                 .ToArray();
+
+            foreach (var (from, to) in BranchFallthroughs)
+            {
+                var fromI = Array.FindIndex(caseOffsets, c => c.Then == from);
+                var toI = Array.FindIndex(caseOffsets, c => c.Then == to);
+                caseOffsets[fromI] = caseOffsets[fromI] with { Breaks = false };
+
+                var fromBlock = Header.BlocksByOffset[from];
+                var toBlock = Header.BlocksByOffset[to];
+                foreach (var inbound in toBlock.Inbound.Where(i => i == fromBlock || Decompiler.postDominance.Dominates(i, fromBlock)))
+                    inbound.ConstructProvidesControlFlow = true;
+
+                if (fromI + 1 != toI)
+                {
+                    if (fromI < toI)
+                        caseOffsets.ShiftElement(fromI, toI - 1);
+                    else
+                        caseOffsets.ShiftElement(fromI, toI);
+                }
+            }
+
             var astSwitch = new ASTSwitch()
             {
                 BlocksByOffset = Header.BlocksByOffset,
@@ -300,6 +328,7 @@ partial class ScriptDecompiler
                 if (lastBlock is ASTNormalBlock lastNormalBlock)
                     // case blocks always end with a jump as a (Calc)Switch statement
                     // is always followed by the necessary Case statements causing a Jump instruction
+                    // (fallthrough blocks do not end with a Jump but are not merge inbounds either)
                     lastNormalBlock.LastInstructionIsRedundantControlFlow = true;
             }
             Header.Parent = astSwitch;

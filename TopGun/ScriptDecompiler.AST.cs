@@ -822,6 +822,7 @@ partial class ScriptDecompiler
         {
             public required IReadOnlyList<int?> Compares { get; init; }
             public required TThen Then { get; init; } 
+            public bool Breaks { get; init; }
         }
 
         public ASTBlock? Prefix { get; init; }
@@ -857,7 +858,8 @@ partial class ScriptDecompiler
                         writer.WriteLine("default:");
                 }
                 @case.Then?.WriteTo(subWriter);
-                subWriter.WriteLine("break;");
+                if (@case.Breaks)
+                    subWriter.WriteLine("break;");
             }
 
             writer.WriteLine("}");

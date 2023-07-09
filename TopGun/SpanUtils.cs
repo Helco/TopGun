@@ -45,6 +45,20 @@ internal static unsafe class SpanUtils
         list.RemoveAt(list.Count - 1);
         return element;
     }
+
+    public static void ShiftElement<T>(this T[] array, int oldIndex, int newIndex)
+    {
+        if (oldIndex == newIndex) return;
+        if (oldIndex < 0 || oldIndex >= array.Length) throw new ArgumentOutOfRangeException(nameof(oldIndex));
+        if (newIndex < 0 || newIndex >= array.Length) throw new ArgumentOutOfRangeException(nameof(newIndex));
+
+        T element = array[oldIndex];
+        if (newIndex < oldIndex)
+            Array.Copy(array, newIndex, array, newIndex + 1, oldIndex - newIndex);
+        else
+            Array.Copy(array, newIndex, array, newIndex - 1, newIndex - oldIndex);
+        array[newIndex] = element;
+    }
 }
 
 public unsafe ref struct SpanReader
