@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -82,6 +82,7 @@ public partial class ScriptDecompiler
 
         // Clean ups
         TransformConstructCalcBlockExpressions();
+        TransformRemoveCalcBlocks();
     }
 
     public void WriteTo(TextWriter textWriter, int indent = 0)

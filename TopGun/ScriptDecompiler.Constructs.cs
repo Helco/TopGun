@@ -154,6 +154,8 @@ partial class ScriptDecompiler
                 Instructions = header.Instructions.SkipLast(1).ToList(),
                 ConstructProvidesControlFlow = true
             };
+            foreach (var instruction in prefix.Instructions)
+                instruction.Parent = prefix;
             header.StartOwnOffset = header.StartTotalOffset; // preserve to keep offset references working
             header.Instructions.RemoveRange(0, header.Instructions.Count - 1);
             return prefix;
