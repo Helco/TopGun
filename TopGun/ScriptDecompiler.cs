@@ -30,6 +30,7 @@ public partial class ScriptDecompiler
     private Dictionary<int, ASTBlock> blocksByOffset = new();
     private HashSet<int> earlyExitOffsets = new();
     private HashSet<(int, int)> controllingEdgesAtExit = new();
+    private List<GroupingConstruct> constructs = new();
 
     private ASTBlock ASTEntry => blocksByOffset[0];
     public DebugFlags Debug { get; set; } = DebugFlags.None;
@@ -72,12 +73,15 @@ public partial class ScriptDecompiler
         // Constructs (to use results from CFA)
         var loops = DetectLoops();
         var selections = DetectSelections();
-        var constructs = GroupingConstruct.CreateHierarchy(loops.Concat(selections));
+        constructs = GroupingConstruct.CreateHierarchy(loops.Concat(selections));
         foreach (var construct in constructs.SelectMany(c => c.AllChildren))
             construct.Construct();
-        DebugPrintConstructHierarchy(constructs);
+        DebugPrintConstructHierarchy();
         ConstructContinues();
         DebugPrintBlockHierarchy();
+
+        // Clean ups
+        TransformConstructCalcBlocks();
     }
 
     public void WriteTo(TextWriter textWriter, int indent = 0)
@@ -93,7 +97,11 @@ public partial class ScriptDecompiler
 
         ASTEntry.WriteTo(writer);
 
-        var unwrittenBlocks = blocksByOffset.Values.Where(b => b is not ASTExitBlock && b.StartTextPosition == default && b.EndTextPosition == default);
+        var unwrittenBlocks = blocksByOffset.Values.Where(b =>
+            b is not ASTExitBlock &&
+            !b.IsReplacedByNonBlock &&
+            b.StartTextPosition == default &&
+            b.EndTextPosition == default);
         if (unwrittenBlocks.Any())
             throw new Exception($"Detected unwritten blocks ({string.Join(", ", unwrittenBlocks)}), something went wrong");
     }
@@ -109,12 +117,12 @@ public partial class ScriptDecompiler
         }
     }
 
-    private void DebugPrintConstructHierarchy(IEnumerable<GroupingConstruct> rootConstructs)
+    private void DebugPrintConstructHierarchy()
     {
         if (!Debug.HasFlag(DebugFlags.PrintConstructHierarchy))
             return;
         using var writer = new CodeWriter(Console.Out, disposeWriter: false);
-        foreach (var construct in rootConstructs)
+        foreach (var construct in constructs)
             Print(writer, construct);
 
         static void Print(CodeWriter writer, GroupingConstruct construct)

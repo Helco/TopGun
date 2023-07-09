@@ -15,6 +15,7 @@ partial class ScriptDecompiler
         public GroupingConstruct? Parent { get; set; }
         public List<GroupingConstruct> Children { get; } = new();
         public HashSet<ASTBlock> Body { get; init; } = new();
+        public ASTBlock Result { get; private set; } = null!;
         public IEnumerable<GroupingConstruct> AllChildren => // implicitly sorted descending by rank
             Children.SelectMany(c => c.AllChildren).Append(this);
 
@@ -68,6 +69,7 @@ partial class ScriptDecompiler
 
         protected void FinalizeConstructAndParents(ASTBlock astConstruct)
         {
+            Result = astConstruct;
             astConstruct.ContinueOffset = Merge == Parent?.Merge ? null : Merge.StartTotalOffset;
             astConstruct.InboundOffsets.UnionWith(Header.InboundOffsets);
             astConstruct.OutboundOffsets.UnionWith(Header.OutboundOffsets);

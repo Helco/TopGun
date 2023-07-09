@@ -635,6 +635,7 @@ partial class ScriptDecompiler
         public abstract bool CanFallthrough { get; }
         public bool ConstructProvidesControlFlow { get; set; } = false;
         public bool IsLabeled { get; set; }
+        public bool IsReplacedByNonBlock { get; set; } // so it does not have to be written
 
         public ScriptRootInstruction LastRootInstruction
         {
@@ -671,6 +672,22 @@ partial class ScriptDecompiler
         }
 
         public override string ToString() => $"{GetType().Name} {StartTotalOffset} -> {EndTotalOffset}";
+
+        protected static void WriteExpressionOrBlock(CodeWriter writer, ASTExpression? expression, ASTBlock? block)
+        {
+            if (expression != null)
+            {
+                writer.Write('(');
+                expression.WriteTo(writer);
+                writer.Write(')');
+            }
+            else if (block != null)
+            {
+                writer.WriteLine("({");
+                block.WriteTo(writer.Indented);
+                writer.Write("})");
+            }
+        }
     }
 
     private class ASTNormalBlock : ASTBlock
@@ -742,6 +759,7 @@ partial class ScriptDecompiler
     {
         public required bool IsPostCondition { get; init; }
         public required ASTBlock Condition { get; init; }
+        public ASTExpression? ConditionExpression { get; set; }
         public required int BodyOffset { get; init; }
         public ASTBlock Body => BlocksByOffset[BodyOffset];
         public HashSet<ASTBlock> Loop { get; init; } = new();
@@ -756,15 +774,15 @@ partial class ScriptDecompiler
             {
                 writer.WriteLine("do {");
                 Body.WriteTo(subWriter);
-                writer.WriteLine("} while({");
-                Condition.WriteTo(subWriter);
-                writer.WriteLine("}");
+                writer.Write("} while ");
+                WriteExpressionOrBlock(writer, ConditionExpression, Condition);
+                writer.WriteLine(';');
             }
             else
             {
-                writer.WriteLine("while ({");
-                Condition.WriteTo(subWriter);
-                writer.WriteLine("}) {");
+                writer.Write("while ");
+                WriteExpressionOrBlock(writer, ConditionExpression, Condition);
+                writer.WriteLine(" {");
                 Body.WriteTo(subWriter);
                 writer.WriteLine("}");
             }
@@ -776,6 +794,7 @@ partial class ScriptDecompiler
         // for JumpIf Condition is formed by args with potential instructions before the jump
         public ASTBlock? Prefix { get; init; }
         public required ASTBlock Condition { get; init; }
+        public ASTExpression? ConditionExpression { get; set; }
         public required int? ThenOffset { get; init; }
         public ASTBlock? Then => ThenOffset == null ? null : BlocksByOffset[ThenOffset.Value];
         public required int? ElseOffset { get; init; }
@@ -788,9 +807,9 @@ partial class ScriptDecompiler
         {
             using var subWriter = writer.Indented;
             Prefix?.WriteTo(writer);
-            writer.WriteLine("if ({");
-            Condition.WriteTo(subWriter);
-            writer.WriteLine("} then {");
+            writer.Write("if ");
+            WriteExpressionOrBlock(writer, ConditionExpression, Condition);
+            writer.WriteLine(" {");
             if (Then == null)
                 subWriter.WriteLine("// nothing");
             else
@@ -817,6 +836,7 @@ partial class ScriptDecompiler
 
         public ASTBlock? Prefix { get; init; }
         public required ASTBlock Value { get; init; }
+        public ASTExpression? ValueExpression { get; set; }
         public required IReadOnlyList<Case<int?>> CaseOffsets { get; init; }
         public IEnumerable<Case<ASTBlock?>> CaseBlocks => CaseOffsets
             .Select(c => new Case<ASTBlock?>()
@@ -834,9 +854,9 @@ partial class ScriptDecompiler
         {
             using var subWriter = writer.Indented;
             Prefix?.WriteTo(writer);
-            writer.WriteLine("switch ({");
-            Value?.WriteTo(subWriter);
-            writer.WriteLine("}) {");
+            writer.Write("switch ");
+            WriteExpressionOrBlock(writer, ValueExpression, Value);
+            writer.WriteLine(" {");
 
             foreach (var @case in CaseBlocks)
             {
