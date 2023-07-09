@@ -141,6 +141,22 @@ partial class ScriptDecompiler
     {
         public HashSet<(int from, int to)> BranchFallthroughs { get; init; } = new();
 
+        protected static ASTNormalBlock? CreatePrefix(ASTBlock? header_)
+        {
+            if (header_ is not ASTNormalBlock header || header.Instructions.Count < 2)
+                return null;
+
+            var prefix = new ASTNormalBlock()
+            {
+                BlocksByOffset = header.BlocksByOffset,
+                Instructions = header.Instructions.SkipLast(1).ToList(),
+                ConstructProvidesControlFlow = true
+            };
+            header.StartOwnOffset = header.StartTotalOffset; // preserve to keep offset references working
+            header.Instructions.RemoveRange(0, header.Instructions.Count - 1);
+            return prefix;
+        }
+
         protected ASTNormalBlock CreateBlockForExpression(ASTExpression astExpr)
         {
             var astBlock = new ASTNormalBlock()
@@ -226,10 +242,13 @@ partial class ScriptDecompiler
             var astIfElse = new ASTIfElse()
             {
                 BlocksByOffset = Header.BlocksByOffset,
+                Prefix = CreatePrefix(Header),
                 Condition = Header,
                 ThenOffset = thenOffset,
                 ElseOffset = elseOffset == Merge.StartTotalOffset ? null : elseOffset
             };
+            if (astIfElse.Prefix != null)
+                astIfElse.Prefix.Parent = astIfElse;
 
             FinalizeConstructAndParents(astIfElse);
             CleanupBranchControlFlow();
@@ -259,10 +278,12 @@ partial class ScriptDecompiler
             var astSwitch = new ASTSwitch()
             {
                 BlocksByOffset = Header.BlocksByOffset,
-                Prefix = astPrefix,
+                Prefix = CreatePrefix(astPrefix),
                 Value = astValue,
                 CaseOffsets = caseOffsets,
-            };            
+            };
+            if (astSwitch.Prefix != null)
+                astSwitch.Prefix.Parent = astSwitch;
             astValue.Parent = astSwitch;
 
             FinalizeConstructAndParents(astSwitch);
