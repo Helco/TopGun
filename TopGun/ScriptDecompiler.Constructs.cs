@@ -141,11 +141,8 @@ partial class ScriptDecompiler
                 throw new NotSupportedException("JumpIf selections do not support branch fallthroughs");
 
             var lastInstruction = ((ASTRootOpInstruction)((ASTNormalBlock)Header).Instructions.Last()).RootInstruction;
-            var jumpTarget = lastInstruction.Offset + lastInstruction.Args[0].Value;
-            var thenBlock = Header.Outbound.SingleOrDefault(b => b.StartTotalOffset != jumpTarget);
-            var elseBlock = Header.Outbound.SingleOrDefault(b => b.StartTotalOffset == jumpTarget);
-            if (elseBlock != Merge)
-                throw new Exception("Something went wrong trying to construct a JumpIf");
+            var thenOffset = lastInstruction.Offset + lastInstruction.Args[0].Value;
+            var elseOffset = lastInstruction.EndOffset;
 
             var header = (ASTNormalBlock)Header;
             var astCondition = new ASTNormalBlock()
@@ -172,8 +169,8 @@ partial class ScriptDecompiler
                 BlocksByOffset = Header.BlocksByOffset,
                 Prefix = header.Instructions.Any() ? header : null,
                 Condition = astCondition,
-                ThenOffset = thenBlock?.StartTotalOffset,
-                ElseOffset = null,
+                ThenOffset = thenOffset == Merge.StartTotalOffset ? null : thenOffset,
+                ElseOffset = elseOffset == Merge.StartTotalOffset ? null : elseOffset,
                 ContinueOffset = Merge == Parent?.Merge ? null : Merge.StartTotalOffset,
                 StartOwnOffset = header.StartTotalOffset,
                 EndOwnOffset = header.EndTotalOffset,
