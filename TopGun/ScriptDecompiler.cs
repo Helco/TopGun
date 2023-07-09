@@ -19,6 +19,7 @@ public partial class ScriptDecompiler
     private DominanceTree postDominance = null!;
     private int nextTmpIndex = 0;
     private Dictionary<int, ASTBlock> blocksByOffset = new();
+    private HashSet<int> earlyExitOffsets = new();
     private HashSet<(int, int)> controllingEdgesAtExit = new();
 
     public ScriptDecompiler(ReadOnlySpan<byte> script, ResourceFile resFile)
@@ -48,7 +49,7 @@ public partial class ScriptDecompiler
         DebugPrintBlockEdges();
         preDominance = new DominanceTree(new ForwardBlockIterator(ASTEntry));
         postDominance = new DominanceTree(new BackwardBlockIterator(astExit));
-        controllingEdgesAtExit = FindControllingEdgesAtExit();
+        FindControllingEdgesAtExit();
         if (controllingEdgesAtExit.Any())
             postDominance = new DominanceTree(new EdgeIgnoringBlockIterator()
             {

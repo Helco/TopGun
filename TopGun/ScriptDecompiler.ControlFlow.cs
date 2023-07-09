@@ -262,9 +262,9 @@ partial class ScriptDecompiler
     }
 
     /// <remarks>Olga Nicole Volgin - "Analysis of Flow of Control for Reverse Engineering of Sequence Diagrams" - Section 5.4</remarks>
-    private HashSet<(int, int)> FindControllingEdgesAtExit()
+    private void FindControllingEdgesAtExit()
     {
-        var earlyExitNodes = astExit.Inbound
+        var earlyExitBlocks = astExit.Inbound
             .OfType<ASTNormalBlock>()
             .Where(b => b.Instructions.Last() is ASTRootOpInstruction { RootInstruction.Op: ScriptOp.Exit })
             .ToHashSet<ASTBlock>();
@@ -277,7 +277,7 @@ partial class ScriptDecompiler
         do
         {
             changed = false;
-            edges = FindControllingEdgesFor(earlyExitNodes);
+            edges = FindControllingEdgesFor(earlyExitBlocks);
             
             var mergingEdges = edges
                 .GroupBy(t => t.branch)
@@ -288,13 +288,14 @@ partial class ScriptDecompiler
             {
                 // branch always leads to early-exit, it is itself an early-exit
                 foreach (var (exit, _, _) in edgeGroup)
-                    earlyExitNodes.Remove(exit);
-                earlyExitNodes.Add(edgeGroup.Key);
+                    earlyExitBlocks.Remove(exit);
+                earlyExitBlocks.Add(edgeGroup.Key);
                 changed = true;
             }
         } while (changed);
 
-        return edges.Select(t => (t.branch.StartTotalOffset, t.postDom.StartTotalOffset)).ToHashSet();
+        earlyExitOffsets = earlyExitBlocks.Select(b => b.StartTotalOffset).ToHashSet();
+        controllingEdgesAtExit = edges.Select(t => (t.branch.StartTotalOffset, t.postDom.StartTotalOffset)).ToHashSet();
     }
 
     private (ASTBlock exit, ASTBlock postDom, ASTBlock branch)[] FindControllingEdgesFor(IEnumerable<ASTBlock> earlyExitNodes) => earlyExitNodes
@@ -315,6 +316,12 @@ partial class ScriptDecompiler
         {
             var body = new HashSet<ASTBlock>() { bodyEnd };
             FindReachableFromTo(body, bodyEnd, header, new BackwardBlockIterator(ASTEntry));
+            foreach (var from in body.Where(b => b != header && !b.Outbound.All(body.Contains)).ToArray())
+            {
+                if (!from.Outbound.Except(body).All(b => earlyExitOffsets.Contains(b.StartTotalOffset)))
+                    throw new NotSupportedException("Unsupported loop break detected, only simple exit nodes are supported");
+                body.UnionWith(from.Outbound);
+            }
             
             if (!headers.Add(header))
                 throw new NotSupportedException("Unsupported control flow with merged loops");
