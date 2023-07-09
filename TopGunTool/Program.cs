@@ -209,7 +209,7 @@ internal class Program
             allText += File.ReadAllText(resFilePath + ".scripts.txt");
         }
         var otherHash = Convert.ToHexString(System.Security.Cryptography.MD5.HashData(Encoding.UTF8.GetBytes(allText)));
-        if (otherHash != "AA603E458228FA1FB2EEB76EF5530B9B")
+        if (otherHash != "DBF15832B317CA1EE548CE97D4D59F8B")
             throw new Exception("Something has changed");
 
         Console.WriteLine($"Decompiled {scriptCount} scripts");

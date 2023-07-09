@@ -280,7 +280,7 @@ partial class ScriptDecompiler
             var astSwitch = new ASTSwitch()
             {
                 BlocksByOffset = Header.BlocksByOffset,
-                Prefix = CreatePrefix(astPrefix),
+                Prefix = CreatePrefix(astPrefix ?? astValue),
                 Value = astValue,
                 CaseOffsets = caseOffsets,
             };
