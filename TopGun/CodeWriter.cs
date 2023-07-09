@@ -9,7 +9,7 @@ namespace TopGun;
 // all zero-based, end is exclusive
 public readonly record struct TextPosition(int Line, int Column);
 
-internal class CodeWriter : IDisposable
+public class CodeWriter : IDisposable
 {
     private readonly CodeWriter? parent;
     private readonly TextWriter writer;

@@ -9,6 +9,7 @@ partial class ScriptDecompiler
     private abstract class GroupingConstruct
     {
         public required ScriptDecompiler Decompiler { get; init; }
+        public ASTBlock Header { get; init; } = null!;
         public required int MergeOffset { get; init; }
         public ASTBlock Merge => Decompiler.blocksByOffset[MergeOffset];
         public GroupingConstruct? Parent { get; set; }
@@ -64,6 +65,26 @@ partial class ScriptDecompiler
         }
 
         public abstract void Construct();
+
+        protected void FinalizeConstructAndParents(ASTBlock astConstruct)
+        {
+            astConstruct.ContinueOffset = Merge == Parent?.Merge ? null : Merge.StartTotalOffset;
+            astConstruct.InboundOffsets.UnionWith(Header.InboundOffsets);
+            astConstruct.OutboundOffsets.UnionWith(Header.OutboundOffsets);
+            astConstruct.StartOwnOffset = Header.StartTotalOffset;
+            astConstruct.EndOwnOffset = Header.EndTotalOffset;
+            astConstruct.BlocksByOffset[Header.StartTotalOffset] = astConstruct;
+
+            foreach (var block in Body)
+                block.Parent = astConstruct;
+            Header.Parent = astConstruct;
+            if (Parent != null)
+            {
+                Parent.Body.ExceptWith(Body);
+                Parent.Body.Remove(Header);
+                Parent.Body.Add(astConstruct);
+            }
+        }
     }
 
     private class DummyConstruct : GroupingConstruct
@@ -77,8 +98,6 @@ partial class ScriptDecompiler
 
     private class NaturalLoop : GroupingConstruct
     {
-        public ASTBlock Header { get; init; } = null!;
-
         public override void Construct()
         {
             var backTarget = Header;
@@ -113,22 +132,40 @@ partial class ScriptDecompiler
                 InboundOffsets = Header.InboundOffsets,
                 OutboundOffsets = Header.OutboundOffsets
             };
-            foreach (var block in Body)
-                block.Parent = astLoop;
-            astLoop.BlocksByOffset[Header.StartTotalOffset] = astLoop;
 
-            if (Parent != null)
-            {
-                Parent.Body.ExceptWith(Body);
-                Parent.Body.Add(astLoop);
-            }
+            FinalizeConstructAndParents(astLoop);
         }
     }
 
     private abstract class Selection : GroupingConstruct
     {
-        public ASTBlock Header { get; init; } = null!;
         public HashSet<(int from, int to)> BranchFallthroughs { get; init; } = new();
+
+        protected ASTNormalBlock CreateBlockForExpression(ASTExpression astExpr)
+        {
+            var astBlock = new ASTNormalBlock()
+            {
+                BlocksByOffset = Header.BlocksByOffset,
+                Instructions = new()
+                {
+                    new ASTReturn()
+                    {
+                        Value = astExpr
+                    }
+                },
+                StartOwnOffset = -Header.StartTotalOffset,
+                EndOwnOffset = -Header.EndTotalOffset
+            };
+            astBlock.FixChildrenParents();
+            Header.BlocksByOffset[-Header.StartTotalOffset] = astBlock;
+            return astBlock;
+        }
+
+        protected void CleanupBranchControlFlow()
+        {
+            foreach (var lastBlock in Merge.Inbound.Intersect(Body))
+                lastBlock.ConstructProvidesControlFlow = true;
+        }
     }
 
     private class JumpIfSelection : Selection
@@ -140,29 +177,17 @@ partial class ScriptDecompiler
             if (BranchFallthroughs.Any())
                 throw new NotSupportedException("JumpIf selections do not support branch fallthroughs");
 
-            var lastInstruction = ((ASTRootOpInstruction)((ASTNormalBlock)Header).Instructions.Last()).RootInstruction;
+            var lastInstruction = Header.LastRootInstruction;
             var thenOffset = lastInstruction.Offset + lastInstruction.Args[0].Value;
             var elseOffset = lastInstruction.EndOffset;
 
             var header = (ASTNormalBlock)Header;
-            var astCondition = new ASTNormalBlock()
-            {
-                BlocksByOffset = header.BlocksByOffset,
-                Instructions = new()
-                {
-                    new ASTReturn()
-                    {
-                        Value = Decompiler.ExpressionFromConditionOp(
-                            lastInstruction.Args[1],
-                            lastInstruction.Args[2],
-                            (ScriptRootConditionOp)lastInstruction.Args[3].Value,
-                            negateByInstruction: true
-                        )
-                    }
-                }
-            };
-            astCondition.FixChildrenParents();
-            Header.BlocksByOffset[-Header.StartTotalOffset] = astCondition;
+            var astCondition = CreateBlockForExpression(Decompiler.ExpressionFromConditionOp(
+                lastInstruction.Args[1],
+                lastInstruction.Args[2],
+                (ScriptRootConditionOp)lastInstruction.Args[3].Value,
+                negateByInstruction: true
+            ));
 
             var astIfElse = new ASTIfElse()
             {
@@ -170,27 +195,12 @@ partial class ScriptDecompiler
                 Prefix = header.Instructions.Any() ? header : null,
                 Condition = astCondition,
                 ThenOffset = thenOffset == Merge.StartTotalOffset ? null : thenOffset,
-                ElseOffset = elseOffset == Merge.StartTotalOffset ? null : elseOffset,
-                ContinueOffset = Merge == Parent?.Merge ? null : Merge.StartTotalOffset,
-                StartOwnOffset = header.StartTotalOffset,
-                EndOwnOffset = header.EndTotalOffset,
-                InboundOffsets = Header.InboundOffsets,
-                OutboundOffsets = Header.OutboundOffsets
+                ElseOffset = elseOffset == Merge.StartTotalOffset ? null : elseOffset
             };
-            Header.BlocksByOffset[header.StartTotalOffset] = astIfElse;
-            foreach (var lastBlock in Merge.Inbound.Intersect(Body))
-                lastBlock.ConstructProvidesControlFlow = true;
-            Header.Parent = astIfElse;
             astCondition.Parent = astIfElse;
-            foreach (var body in Body)
-                body.Parent = astIfElse;
-
-            if (Parent != null)
-            {
-                Parent.Body.ExceptWith(Body);
-                Parent.Body.Remove(Header);
-                Parent.Body.Add(astIfElse);
-            }
+            
+            FinalizeConstructAndParents(astIfElse);
+            CleanupBranchControlFlow();
         }
     }
 
@@ -203,7 +213,7 @@ partial class ScriptDecompiler
             if (BranchFallthroughs.Any())
                 throw new NotSupportedException("JumpIfCalc selections do not support branch fallthroughs");
 
-            var lastInstruction = ((ASTRootOpInstruction)((ASTNormalBlock)Header).Instructions.Last()).RootInstruction;
+            var lastInstruction = Header.LastRootInstruction;
             var thenOffset = lastInstruction.Offset + lastInstruction.Args[0].Value;
             var elseOffset = lastInstruction.Offset + lastInstruction.Args[1].Value;
             
@@ -212,27 +222,11 @@ partial class ScriptDecompiler
                 BlocksByOffset = Header.BlocksByOffset,
                 Condition = Header,
                 ThenOffset = thenOffset,
-                ElseOffset = elseOffset == Merge.StartTotalOffset ? null : elseOffset,
-                ContinueOffset = Merge == Parent?.Merge ? null : Merge.StartTotalOffset,
-                StartOwnOffset = Header.StartTotalOffset,
-                EndOwnOffset = Header.EndTotalOffset,
-                InboundOffsets = Header.InboundOffsets,
-                OutboundOffsets = Header.OutboundOffsets
+                ElseOffset = elseOffset == Merge.StartTotalOffset ? null : elseOffset
             };
-            Header.BlocksByOffset[Header.StartTotalOffset] = astIfElse;
 
-            foreach (var lastBlock in Merge.Inbound.Intersect(Body))
-                lastBlock.ConstructProvidesControlFlow = true;
-            Header.Parent = astIfElse;
-            foreach (var body in Body)
-                body.Parent = astIfElse;
-
-            if (Parent != null)
-            {
-                Parent.Body.ExceptWith(Body);
-                Parent.Body.Remove(Header);
-                Parent.Body.Add(astIfElse);
-            }
+            FinalizeConstructAndParents(astIfElse);
+            CleanupBranchControlFlow();
         }
     }
 
@@ -240,7 +234,7 @@ partial class ScriptDecompiler
     {
         public override void Construct()
         {
-            var lastInstruction = ((ASTRootOpInstruction)((ASTNormalBlock)Header).Instructions.Last()).RootInstruction;
+            var lastInstruction = Header.LastRootInstruction;
             int argIndex = 0;
             ASTBlock? astPrefix = null;
             ASTBlock astValue;
@@ -249,23 +243,38 @@ partial class ScriptDecompiler
                 argIndex++;
                 astPrefix = Header;
                 ((ASTNormalBlock)astPrefix).LastInstructionIsRedundantControlFlow = true;
-                astValue = new ASTNormalBlock()
-                {
-                    BlocksByOffset = Header.BlocksByOffset,
-                    Instructions = new()
-                    {
-                        new ASTReturn()
-                        {
-                            Value = Decompiler.ExpressionFromRootArg(lastInstruction.Args[0])
-                        }
-                    }
-                };
-                astValue.FixChildrenParents();
-                Header.BlocksByOffset[-Header.StartTotalOffset] = astValue;
+                astValue = CreateBlockForExpression(Decompiler.ExpressionFromRootArg(lastInstruction.Args[0]));
             }
             else
                 astValue = Header;
 
+            var caseOffsets = CreateCaseOffsets(argIndex);
+
+            var astSwitch = new ASTSwitch()
+            {
+                BlocksByOffset = Header.BlocksByOffset,
+                Prefix = astPrefix,
+                Value = astValue,
+                CaseOffsets = caseOffsets,
+            };            
+            astValue.Parent = astSwitch;
+
+            FinalizeConstructAndParents(astSwitch);
+            CleanupBranchControlFlow();
+
+            foreach (var lastBlock in Merge.Inbound.Intersect(Body))
+            {
+                if (lastBlock is ASTNormalBlock lastNormalBlock)
+                    // case blocks always end with a jump as a (Calc)Switch statement
+                    // is always followed by the necessary Case statements causing a Jump instruction
+                    // (fallthrough blocks do not end with a Jump but are not merge inbounds either)
+                    lastNormalBlock.LastInstructionIsRedundantControlFlow = true;
+            }
+        }
+
+        private IReadOnlyList<ASTSwitch.Case<int?>> CreateCaseOffsets(int argIndex)
+        {
+            var lastInstruction = Header.LastRootInstruction;
             var compareCount = (lastInstruction.Args.Count - argIndex - 1) / 2;
             var explicitCaseOffsets = Enumerable
                 .Range(0, compareCount)
@@ -276,6 +285,7 @@ partial class ScriptDecompiler
                 explicitCaseOffsets = explicitCaseOffsets.Append((
                     compare: null, // default jump
                     then: lastInstruction.Args[argIndex].Value));
+
             var caseOffsets = explicitCaseOffsets.Select(t => (t.compare, then: t.then + lastInstruction.Offset))
                 .GroupBy(t => t.then)
                 .Select(g => new ASTSwitch.Case<int?>()
@@ -306,39 +316,7 @@ partial class ScriptDecompiler
                 }
             }
 
-            var astSwitch = new ASTSwitch()
-            {
-                BlocksByOffset = Header.BlocksByOffset,
-                Prefix = astPrefix,
-                Value = astValue,
-                CaseOffsets = caseOffsets,
-                ContinueOffset = Merge == Parent?.Merge ? null : Merge.StartTotalOffset,
-                StartOwnOffset = Header.StartTotalOffset,
-                EndOwnOffset = Header.EndTotalOffset,
-                InboundOffsets = Header.InboundOffsets,
-                OutboundOffsets = Header.OutboundOffsets
-            };
-            Header.BlocksByOffset[Header.StartTotalOffset] = astSwitch;
-            foreach (var lastBlock in Merge.Inbound.Intersect(Body))
-            {
-                lastBlock.ConstructProvidesControlFlow = true;
-                if (lastBlock is ASTNormalBlock lastNormalBlock)
-                    // case blocks always end with a jump as a (Calc)Switch statement
-                    // is always followed by the necessary Case statements causing a Jump instruction
-                    // (fallthrough blocks do not end with a Jump but are not merge inbounds either)
-                    lastNormalBlock.LastInstructionIsRedundantControlFlow = true;
-            }
-            Header.Parent = astSwitch;
-            astValue.Parent = astSwitch;
-            foreach (var body in Body)
-                body.Parent = astSwitch;
-
-            if (Parent != null)
-            {
-                Parent.Body.ExceptWith(Body);
-                Parent.Body.Remove(Header);
-                Parent.Body.Add(astSwitch);
-            }
+            return caseOffsets;
         }
     }
 

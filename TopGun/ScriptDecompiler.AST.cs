@@ -8,30 +8,6 @@ namespace TopGun;
 
 partial class ScriptDecompiler
 {
-    private class CalcStackEntry
-    {
-        public int FinalizeInsert { get; }
-        public int FinalizeIndex { get; private set; }
-        public int RefCount { get; set; }
-        public ASTExpression ValueExpression { get; private set; }
-        public ASTExpression RefExpression { get; private set; }
-
-        public CalcStackEntry(ASTExpression valueExpression, int finalizeInsert)
-        {
-            ValueExpression = RefExpression = valueExpression;
-            FinalizeInsert = finalizeInsert;
-        }
-
-        public void Finalize(int index)
-        {
-            RefCount = 2;
-            FinalizeIndex = index;
-            RefExpression = new ASTTmpValue { Parent = ValueExpression.Parent, Index = index };
-        }
-
-        public void WriteTo(CodeWriter writer) => RefExpression.WriteTo(writer);
-    }
-
     private abstract class ASTNode
     {
         public ASTNode? Parent { get; set; }
@@ -73,6 +49,8 @@ partial class ScriptDecompiler
                 child.Parent = this;
             }
         }
+
+        public void ResetTextPosition() => StartTextPosition = EndTextPosition = default;
 
         public virtual void WriteTo(CodeWriter writer)
         {
@@ -657,6 +635,18 @@ partial class ScriptDecompiler
         public abstract bool CanFallthrough { get; }
         public bool ConstructProvidesControlFlow { get; set; } = false;
         public bool IsLabeled { get; set; }
+
+        public ScriptRootInstruction LastRootInstruction
+        {
+            // this is such a common functionality that we sacrifice a bit of encapsulation for it
+            get
+            {
+                if (this is not ASTNormalBlock normalBlock ||
+                    normalBlock.Instructions.LastOrDefault() is not ASTRootOpInstruction astRootOp)
+                    throw new ArgumentException("The block does not have a last root instruction");
+                return astRootOp.RootInstruction;
+            }
+        }
 
         public void AddOutbound(ASTBlock other)
         {

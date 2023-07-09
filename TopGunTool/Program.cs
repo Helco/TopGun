@@ -162,7 +162,8 @@ internal class Program
                     if (!msg.Data.IsEmpty)
                     {
                         var decompiler = new ScriptDecompiler(msg.Data, resourceFile);
-                        decompiler.DecompileCalcAndPrintAll(queueOutput, 1);
+                        decompiler.Decompile();
+                        decompiler.WriteTo(queueOutput, 1);
                     }
                 }
             }
@@ -191,11 +192,26 @@ internal class Program
                 scriptOutput.WriteLine($"{Path.GetFileNameWithoutExtension(resFilePath)} - {index}");
 
                 var decompiler = new ScriptDecompiler(scriptFull, resourceFile);
-                decompiler.DecompileCalcAndPrintAll(scriptOutput);
+                decompiler.Decompile();
+                decompiler.Decompile();
+                decompiler.WriteTo(TextWriter.Null);
+                decompiler.WriteTo(scriptOutput);
                 
                 scriptCount++;
             }
         }
+
+        var allText = "";
+        foreach (var resFilePath in allPaths)
+        {
+            if (!resFilePath.Contains("tama"))
+                continue;
+            allText += File.ReadAllText(resFilePath + ".scripts.txt");
+        }
+        var otherHash = Convert.ToHexString(System.Security.Cryptography.MD5.HashData(Encoding.UTF8.GetBytes(allText)));
+        if (otherHash != "86FED4A6CEEF4351F4B22DF4FC4FA846")
+            throw new Exception("Something has changed");
+
         Console.WriteLine($"Decompiled {scriptCount} scripts");
     }
 

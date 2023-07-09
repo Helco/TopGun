@@ -262,11 +262,10 @@ partial class ScriptDecompiler
     }
 
     /// <remarks>Olga Nicole Volgin - "Analysis of Flow of Control for Reverse Engineering of Sequence Diagrams" - Section 5.4</remarks>
-    private void FindControllingEdgesAtExit()
+    private void DetectControllingEdgesAtExit()
     {
         var earlyExitBlocks = astExit.Inbound
-            .OfType<ASTNormalBlock>()
-            .Where(b => b.Instructions.Last() is ASTRootOpInstruction { RootInstruction.Op: ScriptOp.Exit })
+            .Where(b => b.LastRootInstruction.Op == ScriptOp.Exit)
             .ToHashSet<ASTBlock>();
 
         // there are structures where a branch leads into a second branch which 
@@ -417,7 +416,7 @@ partial class ScriptDecompiler
                 throw new NotSupportedException("Unsupported multiple fallthroughs to the same target");
 
             var body = branches.SelectMany(a => a).Prepend(header).ToHashSet();
-            var lastOp = ((ASTRootOpInstruction)((ASTNormalBlock)header).Instructions.Last()).RootInstruction.Op;
+            var lastOp = header.LastRootInstruction.Op;
             allSelections.Add(lastOp switch
             {
                 ScriptOp.JumpIf => new JumpIfSelection()
