@@ -584,7 +584,7 @@ partial class ScriptDecompiler
 
     private class ASTReturn : ASTInstruction
     {
-        public ASTExpression? Value { get; set; }
+        public required ASTExpression Value { get; set; }
         public override IEnumerable<ASTNode> Children => Value == null ? Array.Empty<ASTNode>() : new[] { Value };
         public override bool CanFallthough => false;
 
@@ -603,7 +603,7 @@ partial class ScriptDecompiler
                 writer.WriteLine("return;");
                 return;
             }
-            writer.Write("return ");
+            writer.Write("return = ");
             Value.WriteTo(writer);
             writer.WriteLine(';');
         }

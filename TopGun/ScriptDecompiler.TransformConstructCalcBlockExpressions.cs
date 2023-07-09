@@ -6,7 +6,7 @@ namespace TopGun;
 
 partial class ScriptDecompiler
 {
-    private void TransformConstructCalcBlocks()
+    private void TransformConstructCalcBlockExpressions()
     {
         foreach (var construct in constructs.SelectMany(c => c.AllChildren))
         {
@@ -35,5 +35,14 @@ partial class ScriptDecompiler
             block.IsReplacedByNonBlock = true;
             return astReturn.Value;
         }
+
+        var reducibleRootReturns = ASTEntry.AllChildren
+            .OfType<ASTRootOpInstruction>()
+            .Where(i => i.RootInstruction.Op == ScriptOp.Return && 
+                i.CalcBody.Count == 1 &&
+                i.CalcBody.Single() is ASTReturn)
+            .ToArray();
+        foreach (var astRootReturn in reducibleRootReturns)
+            astRootReturn.ReplaceMeWith(astRootReturn.CalcBody.Single());
     }
 }
