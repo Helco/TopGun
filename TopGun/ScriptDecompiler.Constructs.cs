@@ -208,6 +208,7 @@ partial class ScriptDecompiler
             var elseOffset = lastInstruction.EndOffset;
 
             var header = (ASTNormalBlock)Header;
+            header.LastInstructionIsRedundantControlFlow = true;
             var astCondition = CreateBlockForExpression(Decompiler.ExpressionFromConditionOp(
                 lastInstruction.Args[1],
                 lastInstruction.Args[2],
@@ -218,7 +219,7 @@ partial class ScriptDecompiler
             var astIfElse = new ASTIfElse()
             {
                 BlocksByOffset = Header.BlocksByOffset,
-                Prefix = header.Instructions.Any() ? header : null,
+                Prefix = header.Instructions.Count > 1 ? header : null,
                 Condition = astCondition,
                 ThenOffset = thenOffset == Merge.StartTotalOffset ? null : thenOffset,
                 ElseOffset = elseOffset == Merge.StartTotalOffset ? null : elseOffset
