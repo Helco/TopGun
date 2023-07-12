@@ -2,10 +2,11 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.IO;
+using System.Text;
+using System.Text.Json;
 using TopGun;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
-using System.Text;
 
 namespace TopGunTool;
 
@@ -161,7 +162,7 @@ internal class Program
                     queueOutput.WriteLine(msg.ToStringWithoutData());
                     if (!msg.Data.IsEmpty)
                     {
-                        var decompiler = new ScriptDecompiler(msg.Data, resourceFile);
+                        var decompiler = new ScriptDecompiler(index, msg.Data, resourceFile);
                         decompiler.Decompile();
                         decompiler.WriteTo(queueOutput, 1);
                     }
@@ -183,6 +184,9 @@ internal class Program
             var resourceFile = new ResourceFile(resFilePath);
             using var scriptOutput = new StreamWriter(resFilePath + ".scripts.txt");
             var scriptDebugInfos = new SortedDictionary<int, ScriptDebugInfo>();
+            SymbolMap? symbolMap = null;
+            if (File.Exists(resFilePath + ".symbols.json"))
+                symbolMap = JsonSerializer.Deserialize<SymbolMap>(File.ReadAllText(resFilePath + ".symbols.json"));
             //var scriptOutput = Console.Out;
             foreach (var (index, res) in resourceFile.Resources.Select((r, i) => (i, r)).Where(t => t.r.Type == ResourceType.Script))
             {
@@ -191,16 +195,20 @@ internal class Program
                 scriptOutput.WriteLine();
                 scriptOutput.WriteLine();
                 scriptOutput.WriteLine($"{Path.GetFileNameWithoutExtension(resFilePath)} - {index}");
+                if (symbolMap?.Scripts?.TryGetValue(index, out var scriptSymbolMap) == true && scriptSymbolMap.Name != null)
+                    scriptOutput.WriteLine($" - {scriptSymbolMap.Name}");
 
-                var decompiler = new ScriptDecompiler(scriptFull, resourceFile);
+                var decompiler = new ScriptDecompiler(index, scriptFull, resourceFile);
                 decompiler.Decompile();
+                if (symbolMap != null)
+                    decompiler.ApplySymbolMap(symbolMap);
                 decompiler.WriteTo(scriptOutput);
                 scriptDebugInfos.Add(index, decompiler.CreateDebugInfo());
                 
                 scriptCount++;
             }
             var sceneDebugInfo = new SceneDebugInfo(scriptDebugInfos);
-            File.WriteAllText(resFilePath + ".debug.json", System.Text.Json.JsonSerializer.Serialize(sceneDebugInfo));
+            File.WriteAllText(resFilePath + ".debug.json", JsonSerializer.Serialize(sceneDebugInfo));
         }
 
         var allText = "";

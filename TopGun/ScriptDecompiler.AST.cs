@@ -69,6 +69,12 @@ partial class ScriptDecompiler
         }
     }
 
+    private interface IASTNodeWithSymbol
+    {
+        void ApplyScriptSymbolMap(ScriptSymbolMap map) {}
+        void ApplySymbolMap(SymbolMap map) {}
+    }
+
     private abstract class ASTExpression : ASTNode
     {
         public virtual bool IsConstant { get; } = false;
@@ -203,45 +209,73 @@ partial class ScriptDecompiler
 
     private abstract class ASTVarReference : ASTExpression
     {
+        private readonly string referencePrefix, symbolPrefix;
+        protected string? resolvedSymbol;
         public int Index { get; init; }
         public override int Precedence => 100;
-    }
 
-    private class ASTGlobalVarValue : ASTVarReference
-    {
+        public ASTVarReference(string referencePrefix, string symbolPrefix)
+        {
+            this.referencePrefix = referencePrefix;
+            this.symbolPrefix = symbolPrefix;
+        }
+
         protected override void WriteToInternal(CodeWriter writer)
         {
-            writer.Write("global");
-            writer.Write(Index);
+            writer.Write(referencePrefix);
+            if (resolvedSymbol == null)
+            {
+                writer.Write(symbolPrefix);
+                writer.Write(Index);
+            }
+            else
+                writer.Write(resolvedSymbol);
         }
     }
 
-    private class ASTLocalVarValue : ASTVarReference
+    private class ASTGlobalVarValue : ASTVarReference, IASTNodeWithSymbol
     {
-        protected override void WriteToInternal(CodeWriter writer)
+        public ASTGlobalVarValue() : base("", "global") { }
+
+        public void ApplySymbolMap(SymbolMap map)
         {
-            writer.Write("local");
-            writer.Write(Index);
+            if (map.Globals.TryGetValue(Index, out var name))
+                resolvedSymbol = name;
         }
     }
 
-    private class ASTGlobalVarAddress : ASTVarReference
+    private class ASTLocalVarValue : ASTVarReference, IASTNodeWithSymbol
+    {
+        public ASTLocalVarValue() : base("", "local") { }
+
+        public void ApplyScriptSymbolMap(ScriptSymbolMap map)
+        {
+            if (map.Locals.TryGetValue(Index, out var name))
+                resolvedSymbol = name;
+        }
+    }
+
+    private class ASTGlobalVarAddress : ASTVarReference, IASTNodeWithSymbol
     {
         public override bool IsConstant => true;
-        protected override void WriteToInternal(CodeWriter writer)
+        public ASTGlobalVarAddress() : base("&", "global") { }
+
+        public void ApplySymbolMap(SymbolMap map)
         {
-            writer.Write("&global");
-            writer.Write(Index);
+            if (map.Globals.TryGetValue(Index, out var name))
+                resolvedSymbol = name;
         }
     }
 
-    private class ASTLocalVarAddress : ASTVarReference
+    private class ASTLocalVarAddress : ASTVarReference, IASTNodeWithSymbol
     {
         public override bool IsConstant => true;
-        protected override void WriteToInternal(CodeWriter writer)
+        public ASTLocalVarAddress() : base("&", "local") { }
+
+        public void ApplyScriptSymbolMap(ScriptSymbolMap map)
         {
-            writer.Write("&local");
-            writer.Write(Index);
+            if (map.Locals.TryGetValue(Index, out var name))
+                resolvedSymbol = name;
         }
     }
 
@@ -425,7 +459,7 @@ partial class ScriptDecompiler
     private abstract class ASTCall : ASTExpression
     {
         public List<CalcStackEntry> Args { get; init; } = new();
-        public int LocalScopeSize { get; init; }
+        public int LocalScopeSize { get; set; }
         public override int Precedence => 50;
         public override IEnumerable<ASTNode> Children => Args.Select(c => c.RefExpression);
 
@@ -535,8 +569,10 @@ partial class ScriptDecompiler
         }
     }
     
-    private class ASTScriptCall : ASTCall
+    private class ASTScriptCall : ASTCall, IASTNodeWithSymbol
     {
+        private string? resolvedSymbol;
+
         public CalcStackEntry ScriptIndex { get; set; } = null!;
         public override IEnumerable<ASTNode> Children => base.Children.Prepend(ScriptIndex.RefExpression);
 
@@ -551,9 +587,21 @@ partial class ScriptDecompiler
         protected override void WriteToInternal(CodeWriter writer)
         {
             writer.Write("Script[");
-            ScriptIndex.WriteTo(writer);
+            if (resolvedSymbol == null)
+                ScriptIndex.WriteTo(writer);
+            else
+                writer.Write(resolvedSymbol);
             writer.Write(']');
             WriteArgsTo(writer);
+        }
+
+        public void ApplySymbolMap(SymbolMap symbolMap)
+        {
+            if (ScriptIndex.RefExpression is not ASTImmediate immediate)
+                return;
+
+            if (symbolMap.Scripts.TryGetValue(immediate.Value, out var name) && name.Name != null)
+                resolvedSymbol = name.Name;
         }
     }
 

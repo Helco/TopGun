@@ -19,6 +19,7 @@ public partial class ScriptDecompiler
         PrintBlockHierarchy = 1 << 2,
     }
 
+    private readonly int scriptId;
     private readonly byte[] script;
     private readonly int globalVarCount;
     private readonly ResourceFile resFile;
@@ -36,8 +37,9 @@ public partial class ScriptDecompiler
     private ASTBlock ASTEntry => blocksByOffset[0];
     public DebugFlags Debug { get; set; } = DebugFlags.None;
 
-    public ScriptDecompiler(ReadOnlySpan<byte> script, ResourceFile resFile)
+    public ScriptDecompiler(int scriptId, ReadOnlySpan<byte> script, ResourceFile resFile)
     {
+        this.scriptId = scriptId;
         this.script = script.ToArray();
         this.resFile = resFile;
         astExit = new()
@@ -84,6 +86,17 @@ public partial class ScriptDecompiler
         // Clean ups
         TransformConstructCalcBlockExpressions();
         TransformRemoveCalcBlocks();
+    }
+
+    public void ApplySymbolMap(SymbolMap map)
+    {
+        var scriptSymbolMap = map.Scripts.GetValueOrDefault(scriptId);
+        foreach (var node in ASTEntry.AllChildren.OfType<IASTNodeWithSymbol>())
+        {
+            node.ApplySymbolMap(map);
+            if (scriptSymbolMap != null)
+                node.ApplyScriptSymbolMap(scriptSymbolMap);
+        }
     }
 
     public void WriteTo(TextWriter textWriter, int indent = 0)
