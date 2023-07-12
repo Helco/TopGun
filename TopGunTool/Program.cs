@@ -182,6 +182,7 @@ internal class Program
 
             var resourceFile = new ResourceFile(resFilePath);
             using var scriptOutput = new StreamWriter(resFilePath + ".scripts.txt");
+            var scriptDebugInfos = new SortedDictionary<int, ScriptDebugInfo>();
             //var scriptOutput = Console.Out;
             foreach (var (index, res) in resourceFile.Resources.Select((r, i) => (i, r)).Where(t => t.r.Type == ResourceType.Script))
             {
@@ -193,12 +194,13 @@ internal class Program
 
                 var decompiler = new ScriptDecompiler(scriptFull, resourceFile);
                 decompiler.Decompile();
-                decompiler.Decompile();
-                decompiler.WriteTo(TextWriter.Null);
                 decompiler.WriteTo(scriptOutput);
+                scriptDebugInfos.Add(index, decompiler.CreateDebugInfo());
                 
                 scriptCount++;
             }
+            var sceneDebugInfo = new SceneDebugInfo(scriptDebugInfos);
+            File.WriteAllText(resFilePath + ".debug.json", System.Text.Json.JsonSerializer.Serialize(sceneDebugInfo));
         }
 
         var allText = "";

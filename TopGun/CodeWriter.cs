@@ -15,9 +15,11 @@ public class CodeWriter : IDisposable
     private readonly TextWriter writer;
     private readonly bool disposeWriter;
     private readonly int indent = 0;
+    private readonly List<int> lineLengths = new();
     private bool needsIndent = true;
     private TextPosition position;
 
+    public IReadOnlyList<int> LineLengths => parent?.lineLengths ?? lineLengths;
     public int TabSize { get; set; } = 4;
     public TextPosition Position
     {
@@ -125,6 +127,7 @@ public class CodeWriter : IDisposable
     {
         if (c == '\n')
         {
+            (parent?.lineLengths ?? lineLengths).Add(Position.Column);
             Position = new(Position.Line + 1, 0);
             NeedsIndent = true;
         }

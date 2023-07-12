@@ -24,6 +24,7 @@ public partial class ScriptDecompiler
     private readonly ResourceFile resFile;
     private readonly ASTExitBlock astExit;
 
+    private int[] lineLengths = Array.Empty<int>();
     private DominanceTree preDominance = null!;
     private DominanceTree postDominance = null!;
     private int nextTmpIndex = 0;
@@ -93,11 +94,15 @@ public partial class ScriptDecompiler
 
     public void WriteTo(CodeWriter writer)
     {
+        if (blocksByOffset.Count == 0)
+            throw new InvalidOperationException("Script was not decompiled yet, cannot write");
+            
         foreach (var block in ASTEntry.AllChildren.OfType<ASTBlock>())
             block.ResetTextPosition();
 
         ASTEntry.WriteTo(writer);
 
+        lineLengths = writer.LineLengths.ToArray();
         var unwrittenBlocks = blocksByOffset.Values.Where(b =>
             b is not ASTExitBlock &&
             !b.IsReplacedByNonBlock &&
