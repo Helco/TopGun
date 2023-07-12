@@ -13,33 +13,51 @@ partial class ScriptDecompiler
         public ASTNode? Parent { get; set; }
         public int StartOwnOffset { get; set; } = -1;
         public int EndOwnOffset { get; set; } = -1;
+        public TextPosition StartTextPosition { get; private set; } // only valid after WriteTo
+        public TextPosition EndTextPosition { get; private set; }
+        public virtual IEnumerable<ASTNode> Children => Enumerable.Empty<ASTNode>();
+        public IEnumerable<ASTNode> AllChildren => Children.SelectMany(c => c.AllChildren).Prepend(this);
+
+        private int offsetDepHash = 0, lastStartTotalOffset = -1, lastEndTotalOffset = -1;
+
         public virtual int StartTotalOffset
         {
             get
             {
-                var children = Children.Where(c => c.StartTotalOffset >= 0);
-                if (!children.Any())
-                    return StartOwnOffset;
-                var childrenStart = children.Min(c => c.StartTotalOffset);
-                return StartOwnOffset >= 0 ? Math.Min(StartOwnOffset, childrenStart) : childrenStart;
+                CalculateTotalOffsets();
+                return lastStartTotalOffset;
             }
         }
         public virtual int EndTotalOffset
         {
             get
             {
-                var children = Children.Where(c => c.EndTotalOffset >= 0);
-                if (!children.Any())
-                    return EndOwnOffset;
-                var childrenEnd = children.Max(c => c.EndTotalOffset);
-                return EndOwnOffset >= 0 ? Math.Max(EndOwnOffset, childrenEnd) : childrenEnd;
+                CalculateTotalOffsets();
+                return lastEndTotalOffset;
             }
         }
-        public TextPosition StartTextPosition { get; private set; } // only valid after WriteTo
-        public TextPosition EndTextPosition { get; private set; }
-        public virtual IEnumerable<ASTNode> Children => Enumerable.Empty<ASTNode>();
 
-        public IEnumerable<ASTNode> AllChildren => Children.SelectMany(c => c.AllChildren).Prepend(this);
+        private void CalculateTotalOffsets()
+        {
+            var curOffsetDepHash = HashCode.Combine(StartOwnOffset, EndOwnOffset);
+            curOffsetDepHash = Children.Aggregate(curOffsetDepHash, HashCode.Combine);
+            if (curOffsetDepHash == offsetDepHash)
+                return;
+
+            var children = Children.Where(c => c.StartTotalOffset >= 0 && c.EndTotalOffset >= 0);
+            if (!children.Any())
+            {
+                lastStartTotalOffset = StartOwnOffset;
+                lastEndTotalOffset = EndOwnOffset;
+                return;
+            }
+
+            offsetDepHash = curOffsetDepHash;
+            var childrenStart = children.Min(c => c.StartTotalOffset);
+            var childrenEnd = children.Max(c => c.EndTotalOffset);
+            lastStartTotalOffset = StartOwnOffset >= 0 ? Math.Min(StartOwnOffset, childrenStart) : childrenStart;
+            lastEndTotalOffset = EndOwnOffset >= 0 ? Math.Max(EndOwnOffset, childrenEnd) : childrenEnd;
+        }
 
         public void FixChildrenParents()
         {
