@@ -91,14 +91,16 @@ public readonly struct ScriptCalcInstruction
             text.Append(arg.Type switch
             {
                 ArgType.Immediate => "#",
-                ArgType.Variable => "$",
-                ArgType.InstructionOffset => "IP",
+                ArgType.Variable => "[",
+                ArgType.InstructionOffset => "$",
                 _ => "?"
             });
             if (arg.Type == ArgType.InstructionOffset)
-                text.Append(arg.Value.ToString("+0;-#"));
+                text.Append((Offset + 1 + arg.Value).ToString("D4"));
             else
                 text.Append(arg.Value);
+            if (arg.Type == ArgType.Variable)
+                text.Append(']');
         }
 
         return text.ToString();
