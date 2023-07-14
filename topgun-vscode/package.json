@@ -20,6 +20,13 @@
           ".scripts.txt"
         ],
         "configuration": "./languages/topgun-code-language-configuration.json"
+      },
+      {
+        "id": "topgun-assembly",
+        "aliases": [ "TopGun Script (Assembly) " ],
+        "extensions": [
+          ".disassembly.txt"
+        ]
       }
     ],
     "grammars": [
@@ -27,6 +34,11 @@
         "language": "topgun-code",
         "scopeName": "source.topgun.code",
         "path": "./languages/topgun-code.tmGrammar.json"
+      },
+      {
+        "language": "topgun-assembly",
+        "scopeName": "source.topgun.assembly",
+        "path": "./languages/topgun-assembly.tmGrammar.json"
       }
     ]
   },
