@@ -604,11 +604,19 @@ partial class ScriptDecompiler
 
         protected override void WriteToInternal(CodeWriter writer)
         {
-            writer.Write("Script[");
-            if (resolvedSymbol == null)
-                ScriptIndex.WriteTo(writer);
+            if (ScriptIndex.RefExpression is ASTImmediate immediate)
+            {
+                writer.Write("Script[");
+                if (resolvedSymbol != null)
+                    writer.Write(resolvedSymbol);
+                else
+                    ScriptIndex.WriteTo(writer);
+            }
             else
-                writer.Write(resolvedSymbol);
+            {
+                writer.Write("DynamicScript[");
+                ScriptIndex.WriteTo(writer);
+            }
             writer.Write(']');
             WriteArgsTo(writer);
         }
