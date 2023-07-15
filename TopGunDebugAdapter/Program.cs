@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using OmniSharp.Extensions.DebugAdapter.Protocol.Events;
@@ -85,12 +86,12 @@ internal class Program
                 .WithHandler<DisconnectHandler>()
                 .WithHandler<AttachHandler>()
                 .WithHandler<ThreadsHandler>());
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<ILoggerProvider, LogToDebugOutputProvider>());
 
         var host = builder.Build();
-
         var debugAdapterServer = host.Services.GetRequiredService<DebugAdapterServer>();
-        var consoleAPI = debugAdapterServer.GetRequiredService<ScummVMConsoleAPI>();
-        var logger = debugAdapterServer.GetRequiredService<ILogger<Program>>();
+        var consoleAPI = host.Services.GetRequiredService<ScummVMConsoleAPI>();
+        var logger = host.Services.GetRequiredService<ILogger<ScummVMConsoleClient>>();
         consoleAPI.OnIsPausedChanged += isPaused =>
         {
             logger.LogTrace("IsPaused changed to {isPaused}", isPaused);
@@ -109,7 +110,47 @@ internal class Program
 
         await debugAdapterServer.Initialize(CancellationToken.None);
 
+        host.Services.GetServices<ILoggerProvider>().OfType<LogToDebugOutputProvider>().Single().Server = debugAdapterServer;
+
         logger.LogInformation("Debug Adapter Server is initialized");
         await host.RunAsync();
+    }
+}
+
+internal class LogToDebugOutputProvider : ILoggerProvider
+{
+    public DebugAdapterServer? Server { get; set; }
+
+    public LogToDebugOutputProvider()
+    {
+    }
+
+    public ILogger CreateLogger(string categoryName) => new LogToDebugOutput(this, categoryName);
+
+    public void Dispose() { }
+}
+
+internal class LogToDebugOutput : ILogger
+{
+    private readonly LogToDebugOutputProvider provider;
+    private readonly string categoryName;
+
+    public LogToDebugOutput(LogToDebugOutputProvider provider, string categoryName)
+    {
+        this.provider = provider;
+        this.categoryName = categoryName;
+    }
+
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+    public bool IsEnabled(LogLevel logLevel) => true;
+
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+    {
+        provider.Server?.SendOutput(new OutputEvent()
+        {
+            Category = OutputEventCategory.Console,
+            Output = $"{logLevel} - {categoryName}: {formatter(state, exception)}\n"
+        });
     }
 }
