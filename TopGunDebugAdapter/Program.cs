@@ -12,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using OmniSharp.Extensions.DebugAdapter.Protocol.Events;
+using OmniSharp.Extensions.DebugAdapter.Protocol.Requests;
 using OmniSharp.Extensions.DebugAdapter.Server;
 
 namespace TopGun.DebugAdapter;
@@ -85,7 +86,9 @@ internal class Program
                 .WithOutput(Console.OpenStandardOutput())
                 .WithHandler<DisconnectHandler>()
                 .WithHandler<AttachHandler>()
-                .WithHandler<ThreadsHandler>());
+                .WithHandler<ThreadsHandler>()
+                .WithHandler<ContinueHandler>()
+                .WithHandler<PauseHandler>());
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<ILoggerProvider, LogToDebugOutputProvider>());
 
         var host = builder.Build();

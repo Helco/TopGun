@@ -86,12 +86,27 @@ internal partial class ScummVMConsoleAPI
         throw new UnknownConsoleMessageException(null, message);
     }
 
-    private void SetIsPaused(bool isPaused)
+    [Flags]
+    private enum PauseFlags
     {
+        Paused = FlagPaused,
+        Running = default,
+        SilentRunning = FlagSilent,
+        SilentPaused = FlagPaused | FlagSilent,
+
+        FlagPaused = (1 << 0),
+        FlagSilent = (1 << 1)
+    }
+
+    private void SetIsPaused(bool isPaused) => SetIsPaused(isPaused ? PauseFlags.Paused : PauseFlags.Running);
+    private void SetIsPaused(PauseFlags action)
+    {
+        var isPaused = action.HasFlag(PauseFlags.FlagPaused);
         if (this.isPaused == isPaused)
             return;
         this.isPaused = isPaused;
-        OnIsPausedChanged?.Invoke(isPaused);
+        if (!action.HasFlag(PauseFlags.FlagSilent))
+            OnIsPausedChanged?.Invoke(isPaused);
     }
 
     [GeneratedRegex(@"(break|trace) (\d+) created")]
@@ -165,6 +180,18 @@ internal partial class ScummVMConsoleAPI
         return result;
     }
 
+    [GeneratedRegex(@"^\w+(\.bin)?$", RegexOptions.IgnoreCase)]
+    private static partial Regex PatternSceneName();
+    public async Task<IReadOnlyList<string>> SceneStack(CancellationToken cancel)
+    {
+        var command = "scenestack";
+        var response = await client.SendCommand(command, cancel);
+        if (!response.All(PatternSceneName().IsMatch))
+            throw new UnknownConsoleMessageException(command, response);
+        SetIsPaused(true);
+        return response;
+    }
+
     [GeneratedRegex(@"(\d+) = (\d+)")]
     private static partial Regex PatternVariable();
     private async Task<IReadOnlyDictionary<int, int>> VariableCommand(string command, CancellationToken cancel)
@@ -187,17 +214,18 @@ internal partial class ScummVMConsoleAPI
     public Task<IReadOnlyDictionary<int, int>> GlobalVariables(int offset, int count, CancellationToken cancel) =>
         VariableCommand($"globalVars {offset} {count}", cancel);
     
-    private async Task SimpleCommandIgnoringOutput(string command, int expectLinesToIgnore, bool isPausedAfter, CancellationToken cancel)
+    private async Task SimpleCommandIgnoringOutput(string command, int expectLinesToIgnore, PauseFlags pauseFlags, CancellationToken cancel)
     {
         var response = await client.SendCommand(command, cancel);
         if (response.Count != expectLinesToIgnore)
             throw new UnknownConsoleMessageException(command, response);
-        SetIsPaused(isPausedAfter);
+        SetIsPaused(pauseFlags);
     }
 
-    public Task DeleteAllPoints(CancellationToken cancel) => SimpleCommandIgnoringOutput("delete-all", 0, true, cancel);
-    public Task Continue(CancellationToken cancel) => SimpleCommandIgnoringOutput("exit", 0, false, cancel);
-    public Task Step(CancellationToken cancel) => SimpleCommandIgnoringOutput("step", 1, false, cancel);
-    public Task StepOver(CancellationToken cancel) => SimpleCommandIgnoringOutput("stepOver", 1, false, cancel);
-    public Task StepOut(CancellationToken cancel) => SimpleCommandIgnoringOutput("stepOut", 1, false, cancel);
+    public Task DeleteAllPoints(CancellationToken cancel) => SimpleCommandIgnoringOutput("delete-all", 0, PauseFlags.Paused, cancel);
+    public Task Continue(CancellationToken cancel) => SimpleCommandIgnoringOutput("exit", 0, PauseFlags.SilentRunning, cancel);
+    public Task Pause(CancellationToken cancel) => SimpleCommandIgnoringOutput("break", 2, PauseFlags.Paused, cancel);
+    public Task Step(CancellationToken cancel) => SimpleCommandIgnoringOutput("step", 1, PauseFlags.Running, cancel);
+    public Task StepOver(CancellationToken cancel) => SimpleCommandIgnoringOutput("stepOver", 1, PauseFlags.Running, cancel);
+    public Task StepOut(CancellationToken cancel) => SimpleCommandIgnoringOutput("stepOut", 1, PauseFlags.Running, cancel);
 }
