@@ -9,7 +9,9 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onDebug"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "languages": [
@@ -39,6 +41,68 @@
         "language": "topgun-assembly",
         "scopeName": "source.topgun.assembly",
         "path": "./languages/topgun-assembly.tmGrammar.json"
+      }
+    ],
+    "breakpoints": [
+      {
+        "language": "topgun-code"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "topgun",
+        "label": "TopGun in ScummVM Debug",
+        "configurationAttributes": {
+          "attach": {
+            "properties": {
+              "engineHost": {
+                "type": "string",
+                "description": "IP address or host name of the running TopGun in ScummVM engine",
+                "default": "127.0.0.1"
+              },
+              "enginePort": {
+                "type": "number",
+                "description": "Port number of the running TopGun in ScummVM engine",
+                "default": 2346
+              },
+              "resourceDir": {
+                "type": "string",
+                "description": "Absolute path to the directory containing the resource and decompiled/disassembled script files",
+                "default": "${workspaceFolder}"
+              },
+              "debugAdapter": {
+                "type": "string",
+                "description": "Absolute path to the debug adapter server",
+                "default": ""
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "description": "Automatically stop after launch.",
+                "default": "true"
+              },
+              "waitForDotnetDebugger": {
+                "type": "boolean",
+                "description": "Let the debug adapter server wait for a .NET debugger",
+                "default": "false"
+              },
+              "verboseDebugAdapter": {
+                "type": "boolean",
+                "description": "More verbose loggin of the debug adapter server",
+                "default": "false"
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "topgun",
+            "request": "attach",
+            "name": "Attach to ScummVM",
+            "resourceDir": "${workspaceFolder}",
+            "engineHost": "127.0.0.1",
+            "enginePort": 2346
+          }
+        ]
       }
     ]
   },

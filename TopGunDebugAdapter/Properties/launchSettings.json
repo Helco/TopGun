@@ -1,0 +1,7 @@
+{
+  "profiles": {
+    "TopGunDebugAdapter": {
+      "commandName": "Project"
+    }
+  }
+}

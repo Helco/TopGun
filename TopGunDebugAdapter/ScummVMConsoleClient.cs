@@ -82,7 +82,7 @@ internal class ScummVMConsoleClient : IDisposable
             if (line == "BYE")
                 throw new IOException("Server waved goodbye");
             else if (line == "EOM")
-                return message;
+                return message.Where(l => !string.IsNullOrWhiteSpace(l)).ToArray();
             else
                 message.Add(line);
         }

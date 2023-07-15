@@ -71,6 +71,10 @@ internal partial class ScummVMConsoleAPI
 
     private readonly ScummVMConsoleClient client;
 
+    private bool? isPaused = null; // at start we do not know
+
+    public event Action<bool>? OnIsPausedChanged;
+
     public ScummVMConsoleAPI(ScummVMConsoleClient client)
     {
         this.client = client;
@@ -80,6 +84,14 @@ internal partial class ScummVMConsoleAPI
     private void HandleMessage(IReadOnlyList<string> message)
     {
         throw new UnknownConsoleMessageException(null, message);
+    }
+
+    private void SetIsPaused(bool isPaused)
+    {
+        if (this.isPaused == isPaused)
+            return;
+        this.isPaused = isPaused;
+        OnIsPausedChanged?.Invoke(isPaused);
     }
 
     [GeneratedRegex(@"(break|trace) (\d+) created")]
@@ -93,7 +105,9 @@ internal partial class ScummVMConsoleAPI
         var match = PatternPointCreated().Match(response.Single());
         if (!match.Success)
             throw new UnknownConsoleMessageException(command, response);
-        return int.Parse(match.Groups[1].Value);
+        var result = int.Parse(match.Groups[1].Value);
+        SetIsPaused(true);
+        return result;
     }
 
     [GeneratedRegex(@"Point \d+ deleted")]
@@ -104,6 +118,7 @@ internal partial class ScummVMConsoleAPI
         var response = await client.SendCommand(command, cancel);
         if (response.Count != 1 || !PatternPointDeleted().IsMatch(response.Single()))
             throw new UnknownConsoleMessageException(command, response);
+        SetIsPaused(true);
     }
 
     [GeneratedRegex(@"(\d+): (break for|trace) ([\w-]+) (\d+) @ (\d+)")]
@@ -112,7 +127,7 @@ internal partial class ScummVMConsoleAPI
     {
         var command = "list-breaks";
         var response = await client.SendCommand(command, cancel);
-        return response.Select(line =>
+        var result = response.Select(line =>
         {
             var match = PatternListedPoint().Match(line);
             if (!match.Success || !stringToPointType.TryGetValue(match.Groups[2].Value, out var pointType))
@@ -124,6 +139,8 @@ internal partial class ScummVMConsoleAPI
                int.Parse(match.Groups[3].Value),
                int.Parse(match.Groups[4].Value));
         }).ToArray();
+        SetIsPaused(true);
+        return result;
     }
 
     [GeneratedRegex(@"\d+: (\w+) (\d+) @ (\d+)(?: (\d+) args)?(?: (\d+) local variables)?")]
@@ -132,7 +149,7 @@ internal partial class ScummVMConsoleAPI
     {
         var command = "stacktrace";
         var response = await client.SendCommand(command, cancel);
-        return response.Select(line =>
+        var result = response.Select(line =>
         {
             var match = PatternStackFrame().Match(line);
             if (!match.Success || !stringToCallType.TryGetValue(match.Groups[0].Value, out var callType))
@@ -144,6 +161,8 @@ internal partial class ScummVMConsoleAPI
                 match.Groups[3].Success ? int.Parse(match.Groups[3].Value) : 0,
                 match.Groups[4].Success ? int.Parse(match.Groups[4].Value) : 0);
         }).ToArray();
+        SetIsPaused(true);
+        return result;
     }
 
     [GeneratedRegex(@"(\d+) = (\d+)")]
@@ -151,13 +170,15 @@ internal partial class ScummVMConsoleAPI
     private async Task<IReadOnlyDictionary<int, int>> VariableCommand(string command, CancellationToken cancel)
     {
         var response = await client.SendCommand(command, cancel);
-        return response.Select(line =>
+        var result = response.Select(line =>
         {
             var match = PatternVariable().Match(line);
             if (!match.Success)
                 throw new UnknownConsoleMessageException(command, response);
             return (int.Parse(match.Groups[0].Value), int.Parse(match.Groups[1].Value));
         }).ToDictionary(t => t.Item1, t => t.Item2);
+        SetIsPaused(true);
+        return result;
     }
 
     public Task<IReadOnlyDictionary<int, int>> LocalVariables(int scopeIndex, CancellationToken cancel) =>
@@ -166,16 +187,17 @@ internal partial class ScummVMConsoleAPI
     public Task<IReadOnlyDictionary<int, int>> GlobalVariables(int offset, int count, CancellationToken cancel) =>
         VariableCommand($"globalVars {offset} {count}", cancel);
     
-    private async Task SimpleCommandIgnoringOutput(string command, int expectLinesToIgnore, CancellationToken cancel)
+    private async Task SimpleCommandIgnoringOutput(string command, int expectLinesToIgnore, bool isPausedAfter, CancellationToken cancel)
     {
         var response = await client.SendCommand(command, cancel);
         if (response.Count != expectLinesToIgnore)
             throw new UnknownConsoleMessageException(command, response);
+        SetIsPaused(isPausedAfter);
     }
 
-    public Task DeleteAllPoints(CancellationToken cancel) => SimpleCommandIgnoringOutput("delete-all", 0, cancel);
-    public Task Continue(CancellationToken cancel) => SimpleCommandIgnoringOutput("exit", 0, cancel);
-    public Task Step(CancellationToken cancel) => SimpleCommandIgnoringOutput("step", 1, cancel);
-    public Task StepOver(CancellationToken cancel) => SimpleCommandIgnoringOutput("stepOver", 1, cancel);
-    public Task StepOut(CancellationToken cancel) => SimpleCommandIgnoringOutput("stepOut", 1, cancel);
+    public Task DeleteAllPoints(CancellationToken cancel) => SimpleCommandIgnoringOutput("delete-all", 0, true, cancel);
+    public Task Continue(CancellationToken cancel) => SimpleCommandIgnoringOutput("exit", 0, false, cancel);
+    public Task Step(CancellationToken cancel) => SimpleCommandIgnoringOutput("step", 1, false, cancel);
+    public Task StepOver(CancellationToken cancel) => SimpleCommandIgnoringOutput("stepOver", 1, false, cancel);
+    public Task StepOut(CancellationToken cancel) => SimpleCommandIgnoringOutput("stepOut", 1, false, cancel);
 }

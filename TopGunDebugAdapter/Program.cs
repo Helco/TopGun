@@ -1,37 +1,115 @@
 ﻿using System;
+using System.CommandLine;
+using System.CommandLine.NamingConventionBinder;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Serilog;
+using OmniSharp.Extensions.DebugAdapter.Protocol.Events;
+using OmniSharp.Extensions.DebugAdapter.Server;
 
 namespace TopGun.DebugAdapter;
+
+internal class DebugAdapterOptions
+{
+    public FileInfo ResourceDir { get; set; } = null!;
+    public string EngineHost { get; set; } = "127.0.0.1";
+    public ushort EnginePort { get; set; } = 2346;
+    public bool StopOnEntry { get; set; }
+    public bool WaitForDebugger { get; set; }
+    public bool Verbose { get; set; }
+}
 
 internal class Program
 {
     static async Task Main(string[] args)
     {
-        Log.Logger = new LoggerConfiguration()
-            .Enrich.FromLogContext()
-            .WriteTo.Console()
-            .WriteTo.Debug()
-            .MinimumLevel.Verbose()
-            .CreateLogger();
-        var loggerFactory = LoggerFactory.Create(config => config.AddSerilog());
+        var defaultOpts = new DebugAdapterOptions();
+        var resourceDirOption = new Option<FileInfo>("--resourceDir", "The path to the directory containing the resource and decompiled/disassembled script files")
+            .LegalFilePathsOnly();
+        var engineHostOption = new Option<string>("--engineHost", "The IP address or host name of the running TopGun engine in ScummVM");
+        var enginePortOption = new Option<ushort>("--enginePort", "The port of the running TopGun engine in ScummVM");
+        var stopOnEntryOption = new Option<bool>("--stopOnEntry", "Stops the game upon attaching");
+        var waitForDebuggerOption = new Option<bool>("--waitForDebugger", "Wait for a debugger to attach before starting the debug adapter server");
+        var verboseOption = new Option<bool>("--verbose", "Verbose logging output");
+        resourceDirOption.IsRequired = true;
+        engineHostOption.SetDefaultValue(defaultOpts.EngineHost);
+        enginePortOption.SetDefaultValue(defaultOpts.EnginePort);
+        stopOnEntryOption.SetDefaultValue(true);
 
-        var cancel = CancellationToken.None;
-        using var client = new ScummVMConsoleClient(loggerFactory.CreateLogger<ScummVMConsoleClient>());
-        client.OnMessage += msg => Console.WriteLine(string.Join("\n", msg.Prepend("Got free message: ").Append("\n")));
-        client.OnError += err => Console.WriteLine("Got error: " + err);
-        await client.Connect("127.0.0.1", 2346, cancel);
-
-        while(true)
+        var rootCommand = new RootCommand("TopGun in ScummVM debug adapter server")
         {
-            var command = Console.ReadLine();
-            if (command == null)
-                break;
-            var response = await client.SendCommand(command, cancel);
-            Console.WriteLine(string.Join("\n", response.Prepend("Response:")));
+            resourceDirOption,
+            engineHostOption,
+            enginePortOption,
+            stopOnEntryOption,
+            waitForDebuggerOption,
+            verboseOption
+        };
+
+        rootCommand.TreatUnmatchedTokensAsErrors = true;
+        rootCommand.Handler = CommandHandler.Create<DebugAdapterOptions>(HandleRootCommand);
+        await rootCommand.InvokeAsync(args);
+    }
+
+    private static async Task HandleRootCommand(DebugAdapterOptions opts)
+    {
+        if (opts.WaitForDebugger)
+        {
+            Debug.WriteLine("Waiting for .NET debugger...");
+            while (!Debugger.IsAttached) { await Task.Delay(1000); }
         }
+
+        var logLevel = opts.Verbose ? LogLevel.Trace : LogLevel.Information;
+
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services
+            .AddSingleton(opts)
+            .AddSingleton<ScummVMConsoleClient>()
+            .AddSingleton<ScummVMConsoleAPI>()
+            .AddLogging(logConfig => logConfig
+                .AddDebug()
+                .SetMinimumLevel(logLevel))
+            .AddDebugAdapterServer(config => config
+                .AddDefaultLoggingProvider()
+                .ConfigureLogging(logConfig => logConfig
+                    .AddDebug()
+                    .SetMinimumLevel(logLevel))
+                .WithInput(Console.OpenStandardInput())
+                .WithOutput(Console.OpenStandardOutput())
+                .WithHandler<DisconnectHandler>()
+                .WithHandler<AttachHandler>()
+                .WithHandler<ThreadsHandler>());
+
+        var host = builder.Build();
+
+        var debugAdapterServer = host.Services.GetRequiredService<DebugAdapterServer>();
+        var consoleAPI = debugAdapterServer.GetRequiredService<ScummVMConsoleAPI>();
+        var logger = debugAdapterServer.GetRequiredService<ILogger<Program>>();
+        consoleAPI.OnIsPausedChanged += isPaused =>
+        {
+            logger.LogTrace("IsPaused changed to {isPaused}", isPaused);
+            if (isPaused)
+                debugAdapterServer.SendStopped(new()
+                {
+                    AllThreadsStopped = true,
+                    Reason = StoppedEventReason.Pause
+                });
+            else
+                debugAdapterServer.SendContinued(new()
+                {
+                    AllThreadsContinued = true
+                });
+        };
+
+        await debugAdapterServer.Initialize(CancellationToken.None);
+
+        logger.LogInformation("Debug Adapter Server is initialized");
+        await host.RunAsync();
     }
 }
