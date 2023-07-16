@@ -182,7 +182,7 @@ internal class Program
                 continue;
 
             var resourceFile = new ResourceFile(resFilePath);
-            using var scriptOutput = new StreamWriter(resFilePath + ".scripts.txt");
+            using var scriptOutput = new CodeWriter(new StreamWriter(resFilePath + ".scripts.txt"));
             var scriptDebugInfos = new SortedDictionary<int, ScriptDebugInfo>();
             SymbolMap? symbolMap = null;
             if (File.Exists(resFilePath + ".symbols.json"))
@@ -219,7 +219,7 @@ internal class Program
             allText += File.ReadAllText(resFilePath + ".scripts.txt");
         }
         var otherHash = Convert.ToHexString(System.Security.Cryptography.MD5.HashData(Encoding.UTF8.GetBytes(allText)));
-        if (otherHash != "EC4CD447B0884B2EFB0A99B92C77F1E9")
+        if (otherHash != "68FB4220CF0DD1470A09F0C4BE4FA535")
             throw new Exception("Something has changed");
 
         Console.WriteLine($"Decompiled {scriptCount} scripts");
