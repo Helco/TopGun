@@ -116,6 +116,7 @@ internal class SceneInfoLoader
             {
                 Name = Path.GetFileNameWithoutExtension(path),
                 Path = path,
+                PresentationHint = SourcePresentationHint.Emphasize,
                 Checksums = new[]
                 {
                         new Checksum()
@@ -133,7 +134,7 @@ internal class SceneInfoLoader
                             Algorithm = ChecksumAlgorithm.Sha256,
                             Value = Convert.ToHexString(sha256)
                         }
-                    }
+                }
             };
         }
         catch (Exception e)

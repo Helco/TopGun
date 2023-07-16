@@ -1,24 +1,19 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
+using OmniSharp.Extensions.DebugAdapter.Protocol.Events;
 using OmniSharp.Extensions.DebugAdapter.Protocol.Requests;
 
 namespace TopGun.DebugAdapter;
 
-internal class AttachHandler : IAttachHandler
+internal class AttachHandler : BaseHandler<AttachHandler>, IAttachHandler
 {
-    private readonly DebugAdapterOptions options;
-    private readonly ILogger<AttachHandler> logger;
     private readonly ScummVMConsoleClient client;
-    private readonly ScummVMConsoleAPI api;
 
-    public AttachHandler(DebugAdapterOptions options, ILogger<AttachHandler> logger, ScummVMConsoleClient client, ScummVMConsoleAPI api)
+    public AttachHandler(IServiceProvider serviceProvider, ScummVMConsoleClient client) : base(serviceProvider)
     {
-        this.options = options;
-        this.logger = logger;
         this.client = client;
-        this.api = api;
     }
 
     public async Task<AttachResponse> Handle(AttachRequestArguments request, CancellationToken cancellationToken)
@@ -31,7 +26,9 @@ internal class AttachHandler : IAttachHandler
             // TODO: Send points to client
 
             // by stopping and continueing as needed we know the state of ScummVM without requesting (which would stop again)
-            if (!options.StopOnEntry)
+            if (options.StopOnEntry)
+                PauseHandler.SendPauseByCommand();
+            else
                 await api.Continue(CancellationToken.None);
         });
         return new();

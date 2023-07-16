@@ -95,34 +95,22 @@ internal class Program
                 .WithHandler<ThreadsHandler>()
                 .WithHandler<ContinueHandler>()
                 .WithHandler<PauseHandler>()
-                .WithHandler<StackTraceHandler>());
+                .WithHandler<StackTraceHandler>()
+                .WithHandler<NextHandler>()
+                .WithHandler<StepInHandler>()
+                .WithHandler<StepOutHandler>());
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<ILoggerProvider, LogToDebugOutputProvider>());
 
+        builder.Logging.SetMinimumLevel(LogLevel.Trace);
+
         var host = builder.Build();
+
         var debugAdapterServer = host.Services.GetRequiredService<DebugAdapterServer>();
-        var consoleAPI = host.Services.GetRequiredService<ScummVMConsoleAPI>();
-        var logger = host.Services.GetRequiredService<ILogger<ScummVMConsoleClient>>();
-        consoleAPI.OnIsPausedChanged += isPaused =>
-        {
-            logger.LogTrace("IsPaused changed to {isPaused}", isPaused);
-            if (isPaused)
-                debugAdapterServer.SendStopped(new()
-                {
-                    AllThreadsStopped = true,
-                    Reason = StoppedEventReason.Pause
-                });
-            else
-                debugAdapterServer.SendContinued(new()
-                {
-                    AllThreadsContinued = true
-                });
-        };
-
+        var logger = host.Services.GetRequiredService<ILogger<DebugAdapterServer>>();
         await debugAdapterServer.Initialize(CancellationToken.None);
-
         host.Services.GetServices<ILoggerProvider>().OfType<LogToDebugOutputProvider>().Single().Server = debugAdapterServer;
+        logger.LogInformation("Initialized");
 
-        logger.LogInformation("Debug Adapter Server is initialized");
         await host.RunAsync();
     }
 }

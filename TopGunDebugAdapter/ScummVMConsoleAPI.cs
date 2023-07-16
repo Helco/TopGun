@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using OmniSharp.Extensions.DebugAdapter.Protocol.Events;
 
 namespace TopGun.DebugAdapter;
 
@@ -70,10 +72,8 @@ internal partial class ScummVMConsoleAPI
         callTypeToString.ToDictionary(kv => kv.Value, kv => kv.Key);
 
     private readonly ScummVMConsoleClient client;
-
-    private bool? isPaused = null; // at start we do not know
-
-    public event Action<bool>? OnIsPausedChanged;
+    private readonly List<Predicate<IReadOnlyList<string>>> onceMessageHandlers = new();
+    private readonly List<Predicate<IReadOnlyList<string>>> alwaysMessageHandlers = new();
 
     public ScummVMConsoleAPI(ScummVMConsoleClient client)
     {
@@ -81,32 +81,30 @@ internal partial class ScummVMConsoleAPI
         client.OnMessage += HandleMessage;
     }
 
+    public void AddOnceMessageHandler(Predicate<IReadOnlyList<string>> handler) =>
+        onceMessageHandlers.Add(handler);
+
+    public void AddAlwaysMessageHandler(Predicate<IReadOnlyList<string>> handler) =>
+        alwaysMessageHandlers.Add(handler);
+
     private void HandleMessage(IReadOnlyList<string> message)
     {
+        for (int i = 0; i < onceMessageHandlers.Count; i++)
+        {
+            if (onceMessageHandlers[i](message))
+            {
+                onceMessageHandlers.RemoveAt(i);
+                return;
+            }
+        }
+
+        foreach (var handler in alwaysMessageHandlers)
+        {
+            if (handler(message))
+                return;
+        }
+
         throw new UnknownConsoleMessageException(null, message);
-    }
-
-    [Flags]
-    private enum PauseFlags
-    {
-        Paused = FlagPaused,
-        Running = default,
-        SilentRunning = FlagSilent,
-        SilentPaused = FlagPaused | FlagSilent,
-
-        FlagPaused = (1 << 0),
-        FlagSilent = (1 << 1)
-    }
-
-    private void SetIsPaused(bool isPaused) => SetIsPaused(isPaused ? PauseFlags.Paused : PauseFlags.Running);
-    private void SetIsPaused(PauseFlags action)
-    {
-        var isPaused = action.HasFlag(PauseFlags.FlagPaused);
-        if (this.isPaused == isPaused)
-            return;
-        this.isPaused = isPaused;
-        if (!action.HasFlag(PauseFlags.FlagSilent))
-            OnIsPausedChanged?.Invoke(isPaused);
     }
 
     [GeneratedRegex(@"(break|trace) (\d+) created")]
@@ -121,7 +119,6 @@ internal partial class ScummVMConsoleAPI
         if (!match.Success)
             throw new UnknownConsoleMessageException(command, response);
         var result = int.Parse(match.Groups[2].Value);
-        SetIsPaused(true);
         return result;
     }
 
@@ -133,7 +130,6 @@ internal partial class ScummVMConsoleAPI
         var response = await client.SendCommand(command, cancel);
         if (response.Count != 1 || !PatternPointDeleted().IsMatch(response.Single()))
             throw new UnknownConsoleMessageException(command, response);
-        SetIsPaused(true);
     }
 
     [GeneratedRegex(@"(\d+): (break for|trace) ([\w-]+) (\d+) @ (\d+)")]
@@ -154,7 +150,6 @@ internal partial class ScummVMConsoleAPI
                int.Parse(match.Groups[4].Value),
                int.Parse(match.Groups[5].Value));
         }).ToArray();
-        SetIsPaused(true);
         return result;
     }
 
@@ -177,7 +172,6 @@ internal partial class ScummVMConsoleAPI
                 match.Groups[4].Success ? int.Parse(match.Groups[3].Value) : 0,
                 match.Groups[5].Success ? int.Parse(match.Groups[4].Value) : 0);
         }).ToArray();
-        SetIsPaused(true);
         return result;
     }
 
@@ -189,7 +183,6 @@ internal partial class ScummVMConsoleAPI
         var response = await client.SendCommand(command, cancel);
         if (!response.All(PatternSceneName().IsMatch))
             throw new UnknownConsoleMessageException(command, response);
-        SetIsPaused(true);
         return response;
     }
 
@@ -205,7 +198,6 @@ internal partial class ScummVMConsoleAPI
                 throw new UnknownConsoleMessageException(command, response);
             return (int.Parse(match.Groups[1].Value), int.Parse(match.Groups[2].Value));
         }).ToDictionary(t => t.Item1, t => t.Item2);
-        SetIsPaused(true);
         return result;
     }
 
@@ -215,18 +207,17 @@ internal partial class ScummVMConsoleAPI
     public Task<IReadOnlyDictionary<int, int>> GlobalVariables(int offset, int count, CancellationToken cancel) =>
         VariableCommand($"globalVars {offset} {count}", cancel);
     
-    private async Task SimpleCommandIgnoringOutput(string command, int expectLinesToIgnore, PauseFlags pauseFlags, CancellationToken cancel)
+    private async Task SimpleCommandIgnoringOutput(string command, int expectLinesToIgnore, CancellationToken cancel)
     {
         var response = await client.SendCommand(command, cancel);
         if (response.Count != expectLinesToIgnore)
             throw new UnknownConsoleMessageException(command, response);
-        SetIsPaused(pauseFlags);
     }
 
-    public Task DeleteAllPoints(CancellationToken cancel) => SimpleCommandIgnoringOutput("delete-all", 0, PauseFlags.Paused, cancel);
-    public Task Continue(CancellationToken cancel) => SimpleCommandIgnoringOutput("exit", 0, PauseFlags.SilentRunning, cancel);
-    public Task Pause(CancellationToken cancel) => SimpleCommandIgnoringOutput("break", 2, PauseFlags.Paused, cancel);
-    public Task Step(CancellationToken cancel) => SimpleCommandIgnoringOutput("step", 1, PauseFlags.Running, cancel);
-    public Task StepOver(CancellationToken cancel) => SimpleCommandIgnoringOutput("stepOver", 1, PauseFlags.Running, cancel);
-    public Task StepOut(CancellationToken cancel) => SimpleCommandIgnoringOutput("stepOut", 1, PauseFlags.Running, cancel);
+    public Task DeleteAllPoints(CancellationToken cancel) => SimpleCommandIgnoringOutput("delete-all", 0, cancel);
+    public Task Continue(CancellationToken cancel) => SimpleCommandIgnoringOutput("exit", 0, cancel);
+    public Task Pause(CancellationToken cancel) => SimpleCommandIgnoringOutput("break", 2, cancel);
+    public Task Step(CancellationToken cancel) => SimpleCommandIgnoringOutput("step", 0, cancel);
+    public Task StepOver(CancellationToken cancel) => SimpleCommandIgnoringOutput("stepOver", 0, cancel);
+    public Task StepOut(CancellationToken cancel) => SimpleCommandIgnoringOutput("stepOut", 0, cancel);
 }

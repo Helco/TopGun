@@ -21,7 +21,7 @@ internal class ScummVMConsoleClient : IDisposable
     private readonly TaskCompletionSource connectCompletion = new();
     private readonly CancellationTokenSource cancelIntervalRead = new();
     private readonly byte[] buffer = new byte[4096];
-    private readonly ILogger<ScummVMConsoleClient> logger;
+    public readonly ILogger<ScummVMConsoleClient> logger;
     private int bufferAvailable = 0;
     private Task? intervalReadTask;
     private bool disposedValue;

@@ -1,21 +1,20 @@
-﻿using System.Threading;
+﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
 using OmniSharp.Extensions.DebugAdapter.Protocol.Requests;
 
 namespace TopGun.DebugAdapter;
 
-internal class ContinueHandler : IContinueHandler
+internal class ContinueHandler : BaseHandler<ContinueHandler>, IContinueHandler
 {
-    private readonly ScummVMConsoleAPI api;
-
-    public ContinueHandler(ScummVMConsoleAPI api)
+    public ContinueHandler(IServiceProvider serviceProvider) : base(serviceProvider)
     {
-        this.api = api;
     }
 
     public async Task<ContinueResponse> Handle(ContinueArguments request, CancellationToken cancellationToken)
     {
         await api.Continue(cancellationToken);
+        PauseHandler.ContinueWithoutEvent();
         return new()
         {
             AllThreadsContinued = true

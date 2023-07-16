@@ -9,19 +9,13 @@ using OmniSharp.Extensions.DebugAdapter.Server;
 
 namespace TopGun.DebugAdapter;
 
-internal class StackTraceHandler : IStackTraceHandler
+internal class StackTraceHandler : BaseHandler<StackTraceHandler>, IStackTraceHandler
 {
-    private readonly ScummVMConsoleAPI api;
     private readonly SceneInfoLoader sceneInfoLoader;
-    private readonly DebugAdapterOptions options;
 
-    private DebugAdapterServer Server => sceneInfoLoader.Server;
-
-    public StackTraceHandler(ScummVMConsoleAPI api, SceneInfoLoader sceneInfoLoader, DebugAdapterOptions options)
+    protected StackTraceHandler(IServiceProvider serviceProvider, SceneInfoLoader sceneInfoLoader) : base(serviceProvider)
     {
-        this.api = api;
         this.sceneInfoLoader = sceneInfoLoader;
-        this.options = options;
     }
 
     public async Task<StackTraceResponse> Handle(StackTraceArguments request, CancellationToken cancellationToken)
@@ -37,6 +31,7 @@ internal class StackTraceHandler : IStackTraceHandler
         if (request.Levels.HasValue)
             stacktrace = stacktrace.Take((int)request.Levels.Value);
 
+        PauseHandler.SendPauseByCommand();
         return new()
         {
             TotalFrames = totalStacktrace.Count,
@@ -76,7 +71,8 @@ internal class StackTraceHandler : IStackTraceHandler
                 Source = sceneInfo.Decompiled,
                 Line = line,
                 Column = column,
-                InstructionPointerReference = $"{sceneInfo.Name}-{scummFrame.Index}-{scummFrame.Offset:D4}"
+                InstructionPointerReference = $"{sceneInfo.Name}-{scummFrame.Index}-{scummFrame.Offset:D4}",
+                PresentationHint = StackFramePresentationHint.Normal
             };
         }
 
