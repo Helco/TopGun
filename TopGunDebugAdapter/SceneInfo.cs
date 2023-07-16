@@ -45,6 +45,7 @@ internal class SceneInfo
             {
                 if (curOffset + lengths[i] > offset)
                     break;
+                curOffset += lengths[i];
             }
             if (i < lengths.Count && i * 2 + 1 < infos.Count)
                 textPos = new(infos[i * 2 + 0], infos[i * 2 + 1]);
