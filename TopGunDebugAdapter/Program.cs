@@ -74,6 +74,8 @@ internal class Program
             .AddSingleton(opts)
             .AddSingleton<ScummVMConsoleClient>()
             .AddSingleton<ScummVMConsoleAPI>()
+            .AddSingleton<SceneInfoLoader>()
+            .AddTransient(typeof(Lazy<>), typeof(Lazier<>))
             .AddLogging(logConfig => logConfig
                 .AddDebug()
                 .SetMinimumLevel(logLevel))
@@ -88,7 +90,8 @@ internal class Program
                 .WithHandler<AttachHandler>()
                 .WithHandler<ThreadsHandler>()
                 .WithHandler<ContinueHandler>()
-                .WithHandler<PauseHandler>());
+                .WithHandler<PauseHandler>()
+                .WithHandler<StackTraceHandler>());
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<ILoggerProvider, LogToDebugOutputProvider>());
 
         var host = builder.Build();
@@ -117,6 +120,14 @@ internal class Program
 
         logger.LogInformation("Debug Adapter Server is initialized");
         await host.RunAsync();
+    }
+}
+
+internal class Lazier<T> : Lazy<T> where T : class
+{
+    public Lazier(IServiceProvider provider)
+        : base(() => provider.GetRequiredService<T>())
+    {
     }
 }
 

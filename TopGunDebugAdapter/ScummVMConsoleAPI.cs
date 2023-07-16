@@ -41,7 +41,7 @@ internal enum ScummVMCallType
 
 internal readonly record struct ScummVMPoint(int Id, bool Breaks, ScummVMPointType Type, int Index, int Offset);
 
-internal readonly record struct ScummVMFrame(ScummVMCallType Type, int Index, int Offset, int Args, int Locals);
+internal readonly record struct ScummVMFrame(int Id, ScummVMCallType Type, int Index, int Offset, int Args, int Locals);
 
 internal partial class ScummVMConsoleAPI
 {
@@ -120,7 +120,7 @@ internal partial class ScummVMConsoleAPI
         var match = PatternPointCreated().Match(response.Single());
         if (!match.Success)
             throw new UnknownConsoleMessageException(command, response);
-        var result = int.Parse(match.Groups[1].Value);
+        var result = int.Parse(match.Groups[2].Value);
         SetIsPaused(true);
         return result;
     }
@@ -145,14 +145,14 @@ internal partial class ScummVMConsoleAPI
         var result = response.Select(line =>
         {
             var match = PatternListedPoint().Match(line);
-            if (!match.Success || !stringToPointType.TryGetValue(match.Groups[2].Value, out var pointType))
+            if (!match.Success || !stringToPointType.TryGetValue(match.Groups[3].Value, out var pointType))
                 throw new UnknownConsoleMessageException(command, response);
             return new ScummVMPoint(
-               int.Parse(match.Groups[0].Value),
-               match.Groups[0].Value[0] == 'b',
+               int.Parse(match.Groups[1].Value),
+               match.Groups[2].Value[0] == 'b',
                pointType,
-               int.Parse(match.Groups[3].Value),
-               int.Parse(match.Groups[4].Value));
+               int.Parse(match.Groups[4].Value),
+               int.Parse(match.Groups[5].Value));
         }).ToArray();
         SetIsPaused(true);
         return result;
@@ -164,17 +164,18 @@ internal partial class ScummVMConsoleAPI
     {
         var command = "stacktrace";
         var response = await client.SendCommand(command, cancel);
-        var result = response.Select(line =>
+        var result = response.Select((line, i) =>
         {
             var match = PatternStackFrame().Match(line);
-            if (!match.Success || !stringToCallType.TryGetValue(match.Groups[0].Value, out var callType))
+            if (!match.Success || !stringToCallType.TryGetValue(match.Groups[1].Value, out var callType))
                 throw new UnknownConsoleMessageException(command, response);
             return new ScummVMFrame(
+                i,
                 callType,
-                int.Parse(match.Groups[1].Value),
                 int.Parse(match.Groups[2].Value),
-                match.Groups[3].Success ? int.Parse(match.Groups[3].Value) : 0,
-                match.Groups[4].Success ? int.Parse(match.Groups[4].Value) : 0);
+                int.Parse(match.Groups[3].Value),
+                match.Groups[4].Success ? int.Parse(match.Groups[3].Value) : 0,
+                match.Groups[5].Success ? int.Parse(match.Groups[4].Value) : 0);
         }).ToArray();
         SetIsPaused(true);
         return result;
@@ -202,7 +203,7 @@ internal partial class ScummVMConsoleAPI
             var match = PatternVariable().Match(line);
             if (!match.Success)
                 throw new UnknownConsoleMessageException(command, response);
-            return (int.Parse(match.Groups[0].Value), int.Parse(match.Groups[1].Value));
+            return (int.Parse(match.Groups[1].Value), int.Parse(match.Groups[2].Value));
         }).ToDictionary(t => t.Item1, t => t.Item2);
         SetIsPaused(true);
         return result;
