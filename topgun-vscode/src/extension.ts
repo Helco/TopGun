@@ -21,6 +21,7 @@ class TopGunDebugAdapterDescriptorFactory implements vscode.DebugAdapterDescript
             "--resourceDir", session.configuration["resourceDir"] || session.workspaceFolder?.uri.fsPath,
             "--engineHost", session.configuration["engineHost"] || "127.0.0.1",
             "--enginePort", session.configuration["enginePort"] || "2346",
+            "--mergeRootCalcFrames", "mergeRootCalcFrames" in session.configuration ? !!session.configuration["mergeRootCalcFrames"] : true,
             "--stopOnEntry", "stopOnEntry" in session.configuration ? !!session.configuration["stopOnEntry"] : true,
             "--waitForDebugger", !!session.configuration["waitForDotnetDebugger"],
             "--verbose", !!session.configuration["verboseDebugAdapter"]

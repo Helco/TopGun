@@ -75,20 +75,25 @@
                 "description": "Absolute path to the debug adapter server",
                 "default": ""
               },
+              "mergeRootCalcFrames": {
+                "type": "boolean",
+                "description": "Whether root-calc stackframes should be merged together",
+                "default": true
+              },
               "stopOnEntry": {
                 "type": "boolean",
                 "description": "Automatically stop after launch.",
-                "default": "true"
+                "default": true
               },
               "waitForDotnetDebugger": {
                 "type": "boolean",
                 "description": "Let the debug adapter server wait for a .NET debugger",
-                "default": "false"
+                "default": false
               },
               "verboseDebugAdapter": {
                 "type": "boolean",
                 "description": "More verbose loggin of the debug adapter server",
-                "default": "false"
+                "default": false
               }
             }
           }

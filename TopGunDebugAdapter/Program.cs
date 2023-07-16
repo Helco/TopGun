@@ -22,6 +22,7 @@ internal class DebugAdapterOptions
     public FileInfo ResourceDir { get; set; } = null!;
     public string EngineHost { get; set; } = "127.0.0.1";
     public ushort EnginePort { get; set; } = 2346;
+    public bool MergeRootCalcFrames { get; set; } = true;
     public bool StopOnEntry { get; set; }
     public bool WaitForDebugger { get; set; }
     public bool Verbose { get; set; }
@@ -36,12 +37,14 @@ internal class Program
             .LegalFilePathsOnly();
         var engineHostOption = new Option<string>("--engineHost", "The IP address or host name of the running TopGun engine in ScummVM");
         var enginePortOption = new Option<ushort>("--enginePort", "The port of the running TopGun engine in ScummVM");
+        var mergeRootCalcFramesOption = new Option<bool>("--mergeRootCalcFrames", "Whether root-calc stackframes should be merged together");
         var stopOnEntryOption = new Option<bool>("--stopOnEntry", "Stops the game upon attaching");
         var waitForDebuggerOption = new Option<bool>("--waitForDebugger", "Wait for a debugger to attach before starting the debug adapter server");
         var verboseOption = new Option<bool>("--verbose", "Verbose logging output");
         resourceDirOption.IsRequired = true;
         engineHostOption.SetDefaultValue(defaultOpts.EngineHost);
         enginePortOption.SetDefaultValue(defaultOpts.EnginePort);
+        mergeRootCalcFramesOption.SetDefaultValue(defaultOpts.MergeRootCalcFrames);
         stopOnEntryOption.SetDefaultValue(true);
 
         var rootCommand = new RootCommand("TopGun in ScummVM debug adapter server")
@@ -49,6 +52,7 @@ internal class Program
             resourceDirOption,
             engineHostOption,
             enginePortOption,
+            mergeRootCalcFramesOption,
             stopOnEntryOption,
             waitForDebuggerOption,
             verboseOption

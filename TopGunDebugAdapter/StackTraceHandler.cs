@@ -13,21 +13,25 @@ internal class StackTraceHandler : IStackTraceHandler
 {
     private readonly ScummVMConsoleAPI api;
     private readonly SceneInfoLoader sceneInfoLoader;
+    private readonly DebugAdapterOptions options;
 
     private DebugAdapterServer Server => sceneInfoLoader.Server;
 
-    public StackTraceHandler(ScummVMConsoleAPI api, SceneInfoLoader sceneInfoLoader)
+    public StackTraceHandler(ScummVMConsoleAPI api, SceneInfoLoader sceneInfoLoader, DebugAdapterOptions options)
     {
         this.api = api;
         this.sceneInfoLoader = sceneInfoLoader;
+        this.options = options;
     }
 
     public async Task<StackTraceResponse> Handle(StackTraceArguments request, CancellationToken cancellationToken)
     {
         var sceneInfo = await sceneInfoLoader.LoadCurrentSceneInfo(cancellationToken);
         
-        var totalStacktrace = await api.Stacktrace(cancellationToken);
+        var totalStacktrace = (await api.Stacktrace(cancellationToken)).ToList();
         var stacktrace = totalStacktrace as IEnumerable<ScummVMFrame>;
+        if (options.MergeRootCalcFrames)
+            MergeRootCalcFrames(totalStacktrace); // modify list to have Count being the logical number of frames for the DAP
         if (request.StartFrame.HasValue)
             stacktrace = stacktrace.Skip((int)request.StartFrame.Value);
         if (request.Levels.HasValue)
@@ -88,11 +92,23 @@ internal class StackTraceHandler : IStackTraceHandler
                 Source = new()
                 {
                     Name = procInfo.plugin,
+                    PresentationHint = SourcePresentationHint.Deemphasize
                 },
                 PresentationHint = procInfo.plugin == "Unknown"
                     ? StackFramePresentationHint.Subtle
                     : StackFramePresentationHint.Normal
             };
+        }
+    }
+
+    private void MergeRootCalcFrames(List<ScummVMFrame> stacktrace)
+    {
+        for (int i = 1; i < stacktrace.Count; i++)
+        {
+            if (stacktrace[i - 1].Type == ScummVMCallType.Calc &&
+                stacktrace[i].Type == ScummVMCallType.Root &&
+                stacktrace[i].Index == stacktrace[i - 1].Index)
+                stacktrace.RemoveAt(i--);
         }
     }
 }
