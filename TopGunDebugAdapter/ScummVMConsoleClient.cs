@@ -56,11 +56,12 @@ internal class ScummVMConsoleClient : IDisposable
         try
         {
             await FlushIncomingMessages();
+            cancel.ThrowIfCancellationRequested();
 
             logger.LogInformation("Sending command: {command}", command);
             var stream = tcpClient.GetStream();
             var buffer = Encoding.UTF8.GetBytes(command + "\n");
-            await stream.WriteAsync(buffer, cancel);
+            await stream.WriteAsync(buffer); // do not cancel the write itself to prevent closing of the socket
             return await ReadMessage(cancel);
         }
         catch(SocketException e) { DisconnectDueTo(e); throw; }
@@ -107,7 +108,8 @@ internal class ScummVMConsoleClient : IDisposable
 
             if (bufferAvailable >= buffer.Length)
                 throw new IOException($"Line is longer than maximum ({buffer.Length})");
-            bufferAvailable += await stream.ReadAsync(buffer.AsMemory(bufferAvailable), cancel);
+            bufferAvailable += await stream.ReadAsync(buffer.AsMemory(bufferAvailable));
+            // DO NOT cancel the read as this closes the TCP client
         }
     }
 
