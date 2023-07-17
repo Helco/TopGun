@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using OmniSharp.Extensions.DebugAdapter.Protocol.Events;
 
-namespace TopGun.DebugAdapter;
+namespace TopGun.DebugAdapter.Handlers;
 
 internal class BaseStepHandler<T> : BaseHandler<T> where T : BaseHandler<T>
 {

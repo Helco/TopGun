@@ -58,7 +58,7 @@ internal class ScummVMConsoleClient : IDisposable
             await FlushIncomingMessages();
             cancel.ThrowIfCancellationRequested();
 
-            logger.LogInformation("Sending command: {command}", command);
+            logger.LogDebug("Sending command: {command}", command);
             var stream = tcpClient.GetStream();
             var buffer = Encoding.UTF8.GetBytes(command + "\n");
             await stream.WriteAsync(buffer); // do not cancel the write itself to prevent closing of the socket
@@ -119,7 +119,7 @@ internal class ScummVMConsoleClient : IDisposable
         {
             var message = await ReadMessage(cancelIntervalRead.Token);
             OnMessage?.Invoke(message);
-            logger.LogInformation("Got free message: {message}", message);
+            logger.LogDebug("Got free message: {message}", message);
         }
     }
 

@@ -3,7 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using OmniSharp.Extensions.DebugAdapter.Protocol.Requests;
 
-namespace TopGun.DebugAdapter;
+namespace TopGun.DebugAdapter.Handlers;
 
 internal class StepInHandler : BaseStepHandler<StepInHandler>, IStepInHandler
 {

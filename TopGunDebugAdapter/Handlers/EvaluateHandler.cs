@@ -4,13 +4,13 @@ using System.Threading.Tasks;
 using OmniSharp.Extensions.DebugAdapter.Protocol.Models;
 using OmniSharp.Extensions.DebugAdapter.Protocol.Requests;
 
-namespace TopGun.DebugAdapter;
+namespace TopGun.DebugAdapter.Handlers;
 
 internal class EvaluateHandler : BaseHandler<EvaluateHandler>, IEvaluateHandler
 {
     private readonly ScummVMConsoleClient client;
 
-    protected EvaluateHandler(IServiceProvider serviceProvider, ScummVMConsoleClient client) : base(serviceProvider)
+    public EvaluateHandler(IServiceProvider serviceProvider, ScummVMConsoleClient client) : base(serviceProvider)
     {
         this.client = client;
     }

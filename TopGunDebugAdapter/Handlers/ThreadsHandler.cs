@@ -5,7 +5,7 @@ using OmniSharp.Extensions.DebugAdapter.Protocol.Models;
 using OmniSharp.Extensions.DebugAdapter.Protocol.Requests;
 using Thread = OmniSharp.Extensions.DebugAdapter.Protocol.Models.Thread;
 
-namespace TopGun.DebugAdapter;
+namespace TopGun.DebugAdapter.Handlers;
 
 internal class ThreadsHandler : BaseHandler<ThreadsHandler>, IThreadsHandler
 {

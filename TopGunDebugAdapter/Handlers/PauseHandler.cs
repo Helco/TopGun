@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 using OmniSharp.Extensions.DebugAdapter.Protocol.Events;
 using OmniSharp.Extensions.DebugAdapter.Protocol.Requests;
 
-namespace TopGun.DebugAdapter;
+namespace TopGun.DebugAdapter.Handlers;
 
 internal class PauseHandler : BaseHandler<PauseHandler>, IPauseHandler
 {

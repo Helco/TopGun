@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using OmniSharp.Extensions.DebugAdapter.Protocol.Models;
 using OmniSharp.Extensions.DebugAdapter.Protocol.Requests;
 
-namespace TopGun.DebugAdapter;
+namespace TopGun.DebugAdapter.Handlers;
 
 internal class NextHandler : BaseStepHandler<NextHandler>, INextHandler
 {

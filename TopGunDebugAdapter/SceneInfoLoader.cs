@@ -38,6 +38,19 @@ internal class SceneInfoLoader
         return sceneInfos[sceneStack.First()];
     }
 
+    public async Task<SceneInfo?> TryLoadSceneInfoAtPath(string path, CancellationToken cancel)
+    {
+        var sceneInfo = sceneInfos.Values.FirstOrDefault(i => i.Decompiled?.Path == path);
+        if (sceneInfo != null)
+            return sceneInfo;
+        if (!path.EndsWith(".scripts.txt") || !path.StartsWith(options.ResourceDir.FullName))
+            return sceneInfo;
+
+        var name = Path.GetFileName(path)[..^(".scripts.txt".Length)];
+        await LoadSceneInfo(name, cancel);
+        return sceneInfos[name];
+    }
+
     private async Task LoadSceneInfo(string name, CancellationToken cancel)
     {
         var basePath = Path.Combine(options.ResourceDir.FullName, name);

@@ -3,7 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using OmniSharp.Extensions.DebugAdapter.Protocol.Requests;
 
-namespace TopGun.DebugAdapter;
+namespace TopGun.DebugAdapter.Handlers;
 
 internal class ContinueHandler : BaseHandler<ContinueHandler>, IContinueHandler
 {

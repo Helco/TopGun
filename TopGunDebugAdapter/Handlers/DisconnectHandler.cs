@@ -2,7 +2,7 @@
 using System.Threading.Tasks;
 using OmniSharp.Extensions.DebugAdapter.Protocol.Requests;
 
-namespace TopGun.DebugAdapter;
+namespace TopGun.DebugAdapter.Handlers;
 
 internal class DisconnectHandler : IDisconnectHandler
 {

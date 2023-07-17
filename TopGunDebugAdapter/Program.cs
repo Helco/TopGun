@@ -14,6 +14,7 @@ using Microsoft.Extensions.Logging;
 using OmniSharp.Extensions.DebugAdapter.Protocol.Events;
 using OmniSharp.Extensions.DebugAdapter.Protocol.Requests;
 using OmniSharp.Extensions.DebugAdapter.Server;
+using TopGun.DebugAdapter.Handlers;
 
 namespace TopGun.DebugAdapter;
 
@@ -99,6 +100,7 @@ internal class Program
                 .WithHandler<NextHandler>()
                 .WithHandler<StepInHandler>()
                 .WithHandler<StepOutHandler>()
+                .WithHandler<SetBreakpointsHandler>()
                 .WithHandler<EvaluateHandler>());
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<ILoggerProvider, LogToDebugOutputProvider>());
 

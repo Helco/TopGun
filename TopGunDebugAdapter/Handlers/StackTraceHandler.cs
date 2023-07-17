@@ -7,7 +7,7 @@ using OmniSharp.Extensions.DebugAdapter.Protocol.Models;
 using OmniSharp.Extensions.DebugAdapter.Protocol.Requests;
 using OmniSharp.Extensions.DebugAdapter.Server;
 
-namespace TopGun.DebugAdapter;
+namespace TopGun.DebugAdapter.Handlers;
 
 internal class StackTraceHandler : BaseHandler<StackTraceHandler>, IStackTraceHandler
 {
@@ -21,7 +21,7 @@ internal class StackTraceHandler : BaseHandler<StackTraceHandler>, IStackTraceHa
     public async Task<StackTraceResponse> Handle(StackTraceArguments request, CancellationToken cancellationToken)
     {
         var sceneInfo = await sceneInfoLoader.LoadCurrentSceneInfo(cancellationToken);
-        
+
         var totalStacktrace = (await api.Stacktrace(cancellationToken)).ToList();
         var stacktrace = totalStacktrace as IEnumerable<ScummVMFrame>;
         if (options.MergeRootCalcFrames)
