@@ -98,7 +98,8 @@ internal class Program
                 .WithHandler<StackTraceHandler>()
                 .WithHandler<NextHandler>()
                 .WithHandler<StepInHandler>()
-                .WithHandler<StepOutHandler>());
+                .WithHandler<StepOutHandler>()
+                .WithHandler<EvaluateHandler>());
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<ILoggerProvider, LogToDebugOutputProvider>());
 
         builder.Logging.SetMinimumLevel(LogLevel.Trace);
