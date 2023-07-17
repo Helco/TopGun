@@ -107,6 +107,14 @@ internal class Program
 
         var debugAdapterServer = host.Services.GetRequiredService<DebugAdapterServer>();
         var logger = host.Services.GetRequiredService<ILogger<DebugAdapterServer>>();
+        var api = host.Services.GetRequiredService<ScummVMConsoleAPI>();
+
+        api.AddAlwaysMessageHandler(message =>
+        {
+            logger.LogWarning("Got unexpected or unknown message: {message}", message);
+            return true;
+        });
+
         await debugAdapterServer.Initialize(CancellationToken.None);
         host.Services.GetServices<ILoggerProvider>().OfType<LogToDebugOutputProvider>().Single().Server = debugAdapterServer;
         logger.LogInformation("Initialized");

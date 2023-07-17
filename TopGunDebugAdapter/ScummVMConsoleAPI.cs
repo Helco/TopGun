@@ -98,7 +98,7 @@ internal partial class ScummVMConsoleAPI
             }
         }
 
-        foreach (var handler in alwaysMessageHandlers)
+        foreach (var handler in (alwaysMessageHandlers as IEnumerable<Predicate<IReadOnlyList<string>>>).Reverse())
         {
             if (handler(message))
                 return;
