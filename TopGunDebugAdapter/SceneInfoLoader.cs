@@ -34,9 +34,9 @@ internal class SceneInfoLoader
 
     public async Task<SceneInfo> LoadCurrentSceneInfo(CancellationToken cancel)
     {
-        var sceneStack = await api.SceneStack(cancel);
+        var (sceneStack, curSceneI) = await api.SceneStack(cancel);
         await Task.WhenAll(sceneStack.Distinct().Select(name => LoadSceneInfo(name, cancel)));
-        return sceneInfos[sceneStack.First()];
+        return sceneInfos[sceneStack[curSceneI ?? 0]];
     }
 
     public async Task<SceneInfo?> TryLoadSceneInfoAtPath(string path, CancellationToken cancel)

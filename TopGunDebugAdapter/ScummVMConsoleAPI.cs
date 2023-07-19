@@ -178,15 +178,23 @@ internal partial class ScummVMConsoleAPI
         return result;
     }
 
-    [GeneratedRegex(@"^\w+(\.bin)?$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^(\> )?(\w+(?:\.bin)?)$", RegexOptions.IgnoreCase)]
     private static partial Regex PatternSceneName();
-    public async Task<IReadOnlyList<string>> SceneStack(CancellationToken cancel)
+    public async Task<(IReadOnlyList<string> scenes, int? curSceneI)> SceneStack(CancellationToken cancel)
     {
         var command = "scenestack";
         var response = await client.SendCommand(command, cancel);
-        if (!response.All(PatternSceneName().IsMatch))
-            throw new UnknownConsoleMessageException(command, response);
-        return response;
+        int? curSceneI = null;
+        var scenes = response.Select((line, i) =>
+        {
+            var match = PatternSceneName().Match(line);
+            if (!match.Success)
+                throw new UnknownConsoleMessageException(command, response);
+            if (match.Groups[1].Success)
+                curSceneI = i;
+            return match.Groups[2].Value;
+        }).ToArray();
+        return (scenes, curSceneI);
     }
 
     [GeneratedRegex(@"(\d+) = (\d+)")]

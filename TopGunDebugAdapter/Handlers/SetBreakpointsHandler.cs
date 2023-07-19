@@ -51,6 +51,4 @@ internal class SetBreakpointsHandler : BaseHandler<SetBreakpointsHandler>, ISetB
                 }).ToArray()
         };
     }
-
-
 }
