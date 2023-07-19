@@ -2,6 +2,7 @@
 using System.Linq;
 using System.IO;
 using OmniSharp.Extensions.DebugAdapter.Protocol.Models;
+using System;
 
 namespace TopGun.DebugAdapter;
 
@@ -38,17 +39,7 @@ internal class SceneInfo
         TextPosition? textPos = null;
         if (DebugInfo?.Scripts?.TryGetValue(index, out var scriptDebugInfo) == true)
         {
-            var lengths = scriptDebugInfo.ByteOffsetToLines.Lengths;
-            var infos = scriptDebugInfo.ByteOffsetToLines.Infos;
-            int curOffset = 0, i;
-            for (i = 0; i < lengths.Count; i++)
-            {
-                if (curOffset + lengths[i] > offset)
-                    break;
-                curOffset += lengths[i];
-            }
-            if (i < lengths.Count && i * 2 + 1 < infos.Count)
-                textPos = new(infos[i * 2 + 0], infos[i * 2 + 1]);
+            textPos = scriptDebugInfo.GetTextPosByOffset(offset);
         }
         return (name, textPos);
     }
@@ -67,5 +58,19 @@ internal class SceneInfo
         if (SymbolMap != null && SymbolMap.Scripts.ContainsKey(index))
             return true;
         return null;
+    }
+
+    public (int Index, int Offset)? FindScript(TextPosition position)
+    {
+        if (DebugInfo == null)
+            return null;
+
+        var (index, offset) = DebugInfo.Scripts
+            .Select(kv => (index: kv.Key, offset: kv.Value.GetOffsetByTextPos(position)))
+            .FirstOrDefault(t => t.offset.HasValue);
+        if (!offset.HasValue)
+            return null;
+
+        return (index, offset.Value);
     }
 }

@@ -15,7 +15,7 @@ internal class ThreadsHandler : BaseHandler<ThreadsHandler>, IThreadsHandler
 
     public Task<ThreadsResponse> Handle(ThreadsArguments request, CancellationToken cancellationToken)
     {
-        PauseHandler.SendPauseByCommand();
+        pauseService.SendPauseByCommand();
         return Task.FromResult(new ThreadsResponse()
         {
             Threads = new[]

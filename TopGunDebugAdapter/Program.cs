@@ -80,6 +80,8 @@ internal class Program
             .AddSingleton<ScummVMConsoleClient>()
             .AddSingleton<ScummVMConsoleAPI>()
             .AddSingleton<SceneInfoLoader>()
+            .AddSingleton<PauseService>()
+            .AddSingleton<BreakpointMapper>()
             .AddTransient(typeof(Lazy<>), typeof(Lazier<>))
             .AddLogging(logConfig => logConfig
                 .AddDebug()
@@ -112,17 +114,38 @@ internal class Program
         var logger = host.Services.GetRequiredService<ILogger<DebugAdapterServer>>();
         var api = host.Services.GetRequiredService<ScummVMConsoleAPI>();
 
-        api.AddAlwaysMessageHandler(message =>
+        api.LastMessageHandler = message =>
         {
             logger.LogWarning("Got unexpected or unknown message: {message}", message);
             return true;
-        });
+        };
 
         await debugAdapterServer.Initialize(CancellationToken.None);
         host.Services.GetServices<ILoggerProvider>().OfType<LogToDebugOutputProvider>().Single().Server = debugAdapterServer;
         logger.LogInformation("Initialized");
 
         await host.RunAsync();
+    }
+}
+
+internal static class UtilExtensions
+{
+    public static TextPosition AdjustForMe(this InitializeRequestArguments args, int line, int? column = null)
+    {
+        if (args.LinesStartAt1)
+            line--;
+        if (column.HasValue && args.ColumnsStartAt1)
+            column = column.Value - 1;
+        return new(line, column ?? 0);
+    }
+
+    public static TextPosition AdjustForThem(this InitializeRequestArguments args, TextPosition pos)
+    {
+        if (args.LinesStartAt1)
+            pos = new(pos.Line + 1, pos.Column);
+        if (args.ColumnsStartAt1)
+            pos = new(pos.Line, pos.Column + 1);
+        return pos;
     }
 }
 

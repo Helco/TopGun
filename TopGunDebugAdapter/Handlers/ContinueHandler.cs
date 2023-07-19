@@ -14,7 +14,7 @@ internal class ContinueHandler : BaseHandler<ContinueHandler>, IContinueHandler
     public async Task<ContinueResponse> Handle(ContinueArguments request, CancellationToken cancellationToken)
     {
         await api.Continue(cancellationToken);
-        PauseHandler.ContinueWithoutEvent();
+        pauseService.ContinueWithoutEvent();
         return new()
         {
             AllThreadsContinued = true

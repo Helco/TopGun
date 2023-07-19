@@ -19,7 +19,7 @@ internal class BaseStepHandler<T> : BaseHandler<T> where T : BaseHandler<T>
     {
         if (message.Count != 0)
             return false;
-        PauseHandler.SendPauseBy(StoppedEventReason.Step);
+        pauseService.SendPauseBy(StoppedEventReason.Step);
         return true;
     }
 }

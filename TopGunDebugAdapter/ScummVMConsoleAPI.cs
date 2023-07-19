@@ -87,6 +87,8 @@ internal partial class ScummVMConsoleAPI
     public void AddAlwaysMessageHandler(Predicate<IReadOnlyList<string>> handler) =>
         alwaysMessageHandlers.Add(handler);
 
+    public Predicate<IReadOnlyList<string>>? LastMessageHandler { get; set; }
+
     private void HandleMessage(IReadOnlyList<string> message)
     {
         for (int i = 0; i < onceMessageHandlers.Count; i++)
@@ -104,12 +106,13 @@ internal partial class ScummVMConsoleAPI
                 return;
         }
 
-        throw new UnknownConsoleMessageException(null, message);
+        if (LastMessageHandler?.Invoke(message) != true)
+            throw new UnknownConsoleMessageException(null, message);
     }
 
     [GeneratedRegex(@"(break|trace) (\d+) created")]
     private static partial Regex PatternPointCreated();
-    public async Task<int> AddBreakpoint(ScummVMPointType type, int index, int offset, CancellationToken cancel)
+    public async Task<ScummVMPoint> AddBreakpoint(ScummVMPointType type, int index, int offset, CancellationToken cancel)
     {
         var command = $"break {pointTypeToString[type]} {index} {offset}";
         var response = await client.SendCommand(command, cancel);
@@ -118,8 +121,8 @@ internal partial class ScummVMConsoleAPI
         var match = PatternPointCreated().Match(response.Single());
         if (!match.Success)
             throw new UnknownConsoleMessageException(command, response);
-        var result = int.Parse(match.Groups[2].Value);
-        return result;
+        var pointId = int.Parse(match.Groups[2].Value);
+        return new(pointId, true, type, index, offset);
     }
 
     [GeneratedRegex(@"Point \d+ deleted")]

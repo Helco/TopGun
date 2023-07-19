@@ -31,7 +31,7 @@ internal class StackTraceHandler : BaseHandler<StackTraceHandler>, IStackTraceHa
         if (request.Levels.HasValue)
             stacktrace = stacktrace.Take((int)request.Levels.Value);
 
-        PauseHandler.SendPauseByCommand();
+        pauseService.SendPauseByCommand();
         return new()
         {
             TotalFrames = totalStacktrace.Count,

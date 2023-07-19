@@ -20,6 +20,7 @@ internal class SceneInfoLoader
     private readonly Lazy<DebugAdapterServer> server;
     private readonly ILogger<SceneInfoLoader> logger;
     private readonly Dictionary<string, SceneInfo> sceneInfos = new();
+    private readonly SemaphoreSlim sceneInfosSemaphore = new(1, 1);
 
     public DebugAdapterServer Server => server.Value;
 
@@ -40,7 +41,7 @@ internal class SceneInfoLoader
 
     public async Task<SceneInfo?> TryLoadSceneInfoAtPath(string path, CancellationToken cancel)
     {
-        var sceneInfo = sceneInfos.Values.FirstOrDefault(i => i.Decompiled?.Path == path);
+        var sceneInfo = sceneInfos.Values.FirstOrDefault(i => i.Decompiled?.Path?.Equals(path, StringComparison.OrdinalIgnoreCase) == true);
         if (sceneInfo != null)
             return sceneInfo;
         if (!path.EndsWith(".scripts.txt") || !path.StartsWith(options.ResourceDir.FullName))
@@ -104,15 +105,23 @@ internal class SceneInfoLoader
         if (missingFiles.Any())
             logger.LogWarning("Scene info for {sceneName} is missing files: {missingFiles}", name, missingFiles);
 
-        sceneInfos[name] = new()
+        await sceneInfosSemaphore.WaitAsync(cancel);
+        try
         {
-            Name = Path.GetFileNameWithoutExtension(name),
-            ResourceFile = resourceFile,
-            Decompiled = decompiled,
-            Disassembly = disassembly,
-            DebugInfo = debugInfo,
-            SymbolMap = symbolMap
-        };
+            sceneInfos[name] = new()
+            {
+                Name = Path.GetFileNameWithoutExtension(name),
+                ResourceFile = resourceFile,
+                Decompiled = decompiled,
+                Disassembly = disassembly,
+                DebugInfo = debugInfo,
+                SymbolMap = symbolMap
+            };
+        }
+        finally
+        {
+            sceneInfosSemaphore.Release();
+        }
     }
 
     private async Task<Source?> TryLoadSource(string path, List<string> errorMessages, CancellationToken cancel)

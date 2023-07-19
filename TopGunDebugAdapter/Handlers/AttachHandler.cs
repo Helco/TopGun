@@ -22,12 +22,12 @@ internal class AttachHandler : BaseHandler<AttachHandler>, IAttachHandler
         _ = Task.Run(async () =>
         {
             await Task.Delay(100);
-            await api.ListPoints(CancellationToken.None);
-            // TODO: Send points to client
+            await api.DeleteAllPoints(cancellationToken);
+            // if there are points to be set, we should get them later by the client
 
             // by stopping and continueing as needed we know the state of ScummVM without requesting (which would stop again)
             if (options.StopOnEntry)
-                PauseHandler.SendPauseByCommand();
+                pauseService.SendPauseByCommand();
             else
                 await api.Continue(CancellationToken.None);
         });
