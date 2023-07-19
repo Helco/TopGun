@@ -194,9 +194,11 @@ internal class Program
 
                 scriptOutput.WriteLine();
                 scriptOutput.WriteLine();
-                scriptOutput.WriteLine($"{Path.GetFileNameWithoutExtension(resFilePath)} - {index}");
+                scriptOutput.Write($"{Path.GetFileNameWithoutExtension(resFilePath)} - {index}");
                 if (symbolMap?.Scripts?.TryGetValue(index, out var scriptSymbolMap) == true && scriptSymbolMap.Name != null)
                     scriptOutput.WriteLine($" - {scriptSymbolMap.Name}");
+                else
+                    scriptOutput.WriteLine();
 
                 var decompiler = new ScriptDecompiler(index, scriptFull, resourceFile);
                 decompiler.Decompile();
@@ -210,17 +212,6 @@ internal class Program
             var sceneDebugInfo = new SceneDebugInfo(scriptDebugInfos);
             File.WriteAllText(resFilePath + ".debug.json", JsonSerializer.Serialize(sceneDebugInfo));
         }
-
-        var allText = "";
-        foreach (var resFilePath in allPaths)
-        {
-            if (!resFilePath.Contains("tama"))
-                continue;
-            allText += File.ReadAllText(resFilePath + ".scripts.txt");
-        }
-        var otherHash = Convert.ToHexString(System.Security.Cryptography.MD5.HashData(Encoding.UTF8.GetBytes(allText)));
-        if (otherHash != "68FB4220CF0DD1470A09F0C4BE4FA535")
-            throw new Exception("Something has changed");
 
         Console.WriteLine($"Decompiled {scriptCount} scripts");
     }

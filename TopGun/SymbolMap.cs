@@ -9,7 +9,7 @@ public class ScriptSymbolMap
     public ScriptSymbolMap(string? name, SortedDictionary<int, string> locals)
     {
         Name = name;
-        Locals = locals;
+        Locals = locals ?? new();
     }
 
     public string? Name { get; }
