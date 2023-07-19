@@ -916,7 +916,8 @@ partial class ScriptDecompiler
             .Select(c => new Case<ASTBlock?>()
             {
                 Compares = c.Compares,
-                Then = c.Then == null ? null : BlocksByOffset[c.Then.Value]
+                Then = c.Then == null ? null : BlocksByOffset[c.Then.Value],
+                Breaks = c.Breaks
             });
         public override IEnumerable<ASTNode> Children => base.Children
             .Concat(new[] { Prefix, Value })
