@@ -7,6 +7,7 @@ using System.Text.Json;
 using TopGun;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+using System.Net.WebSockets;
 
 namespace TopGunTool;
 
@@ -187,7 +188,17 @@ internal class Program
             SymbolMap? symbolMap = null;
             if (File.Exists(resFilePath + ".symbols.json"))
                 symbolMap = JsonSerializer.Deserialize<SymbolMap>(File.ReadAllText(resFilePath + ".symbols.json"));
-            //var scriptOutput = Console.Out;
+
+            foreach (var (key, value) in resourceFile.Variables.OrderBy(v => v.Key))
+            {
+                string keyName;
+                if (key < 5001)
+                    keyName = symbolMap?.SceneVariables.GetValueOrDefault((int)key) ?? $"scene{key}";
+                else
+                    keyName = symbolMap?.SystemVariables.GetValueOrDefault((int)key) ?? $"system{key}";
+                scriptOutput.WriteLine($"&{keyName} = {unchecked((int)value)};");
+            }
+
             foreach (var (index, res) in resourceFile.Resources.Select((r, i) => (i, r)).Where(t => t.r.Type == ResourceType.Script))
             {
                 var scriptFull = resourceFile.ReadResource(res);
