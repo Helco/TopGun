@@ -172,8 +172,8 @@ internal partial class ScummVMConsoleAPI
                 callType,
                 int.Parse(match.Groups[2].Value),
                 int.Parse(match.Groups[3].Value),
-                match.Groups[4].Success ? int.Parse(match.Groups[3].Value) : 0,
-                match.Groups[5].Success ? int.Parse(match.Groups[4].Value) : 0);
+                match.Groups[4].Success ? int.Parse(match.Groups[4].Value) : 0,
+                match.Groups[5].Success ? int.Parse(match.Groups[5].Value) : 0);
         }).ToArray();
         return result;
     }
