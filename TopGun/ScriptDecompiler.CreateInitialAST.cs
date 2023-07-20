@@ -78,17 +78,19 @@ partial class ScriptDecompiler
                 case ScriptCalcOp.PushVar:
                 {
                     var index = calcInstr.Args[0].Value;
-                    Push(calcInstr, index < globalVarCount
-                        ? new ASTGlobalVarValue { Index = index }
-                        : new ASTLocalVarValue { Index = index - globalVarCount });
+                    Push(calcInstr,
+                        index < sceneVarCount ? new ASTSceneVarValue { Index = index }
+                        : index < GlobalVarCount ? new ASTSystemVarValue { Index = index - sceneVarCount }
+                        : new ASTLocalVarValue { Index = index - GlobalVarCount });
                 }
                 break;
                 case ScriptCalcOp.PushVarAddress:
                 {
                     var index = calcInstr.Args[0].Value;
-                    Push(calcInstr, index < globalVarCount
-                        ? new ASTGlobalVarAddress { Index = index }
-                        : new ASTLocalVarAddress { Index = index - globalVarCount });
+                    Push(calcInstr,
+                        index < sceneVarCount ? new ASTSceneVarAddress { Index = index }
+                        : index < GlobalVarCount ? new ASTSystemVarAddress { Index = index - sceneVarCount }
+                        : new ASTLocalVarAddress { Index = index - GlobalVarCount });
                 }
                 break;
                 case ScriptCalcOp.ReadVarArray:

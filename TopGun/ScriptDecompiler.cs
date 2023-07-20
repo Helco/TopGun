@@ -21,7 +21,7 @@ public partial class ScriptDecompiler
 
     private readonly int scriptId;
     private readonly byte[] script;
-    private readonly int globalVarCount;
+    private readonly int sceneVarCount, systemVarCount;
     private readonly ResourceFile resFile;
     private readonly ASTExitBlock astExit;
 
@@ -34,6 +34,7 @@ public partial class ScriptDecompiler
     private HashSet<(int, int)> controllingEdgesAtExit = new();
     private List<GroupingConstruct> constructs = new();
 
+    private int GlobalVarCount => sceneVarCount + systemVarCount;
     private ASTBlock ASTEntry => blocksByOffset[0];
     public DebugFlags Debug { get; set; } = DebugFlags.None;
 
@@ -48,7 +49,8 @@ public partial class ScriptDecompiler
             EndOwnOffset = script.Length,
             BlocksByOffset = blocksByOffset
         };
-        globalVarCount = 5118;
+        sceneVarCount = 5001;
+        systemVarCount = 117;
     }
 
     public void Decompile()
@@ -189,8 +191,9 @@ public partial class ScriptDecompiler
     private ASTExpression ExpressionFromRootArg(ScriptRootInstruction.Arg arg) => arg.Type switch
     {
         ScriptRootInstruction.ArgType.Value => new ASTImmediate() { Value = arg.Value},
-        ScriptRootInstruction.ArgType.Indirect when arg.Value < globalVarCount => new ASTGlobalVarValue() { Index = arg.Value },
-        ScriptRootInstruction.ArgType.Indirect => new ASTLocalVarValue() { Index = arg.Value - globalVarCount },
+        ScriptRootInstruction.ArgType.Indirect when arg.Value < sceneVarCount => new ASTSceneVarValue() { Index = arg.Value },
+        ScriptRootInstruction.ArgType.Indirect when arg.Value < GlobalVarCount => new ASTSystemVarValue() { Index = arg.Value - sceneVarCount },
+        ScriptRootInstruction.ArgType.Indirect => new ASTLocalVarValue() { Index = arg.Value - GlobalVarCount },
         _ => throw new NotSupportedException("Unsupported root argument for conversion to AST expression")
     };
 

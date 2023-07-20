@@ -251,13 +251,31 @@ partial class ScriptDecompiler
         }
     }
 
-    private class ASTGlobalVarValue : ASTVarReference, IASTNodeWithSymbol
+    private enum VariableType
     {
-        public ASTGlobalVarValue() : base("", "global") { }
+        Scene,
+        System,
+        Local
+    }
+
+    private class ASTSystemVarValue : ASTVarReference, IASTNodeWithSymbol
+    {
+        public ASTSystemVarValue() : base("", "system") { }
 
         public void ApplySymbolMap(SymbolMap map)
         {
-            if (map.Globals.TryGetValue(Index, out var name))
+            if (map.SystemVariables.TryGetValue(Index, out var name))
+                resolvedSymbol = name;
+        }
+    }
+
+    private class ASTSceneVarValue : ASTVarReference, IASTNodeWithSymbol
+    {
+        public ASTSceneVarValue() : base("", "scene") { }
+
+        public void ApplySymbolMap(SymbolMap map)
+        {
+            if (map.SceneVariables.TryGetValue(Index, out var name))
                 resolvedSymbol = name;
         }
     }
@@ -273,14 +291,26 @@ partial class ScriptDecompiler
         }
     }
 
-    private class ASTGlobalVarAddress : ASTVarReference, IASTNodeWithSymbol
+    private class ASTSystemVarAddress : ASTVarReference, IASTNodeWithSymbol
     {
         public override bool IsConstant => true;
-        public ASTGlobalVarAddress() : base("&", "global") { }
+        public ASTSystemVarAddress() : base("&", "system") { }
 
         public void ApplySymbolMap(SymbolMap map)
         {
-            if (map.Globals.TryGetValue(Index, out var name))
+            if (map.SystemVariables.TryGetValue(Index, out var name))
+                resolvedSymbol = name;
+        }
+    }
+
+    private class ASTSceneVarAddress : ASTVarReference, IASTNodeWithSymbol
+    {
+        public override bool IsConstant => true;
+        public ASTSceneVarAddress() : base("&", "scene") { }
+
+        public void ApplySymbolMap(SymbolMap map)
+        {
+            if (map.SceneVariables.TryGetValue(Index, out var name))
                 resolvedSymbol = name;
         }
     }

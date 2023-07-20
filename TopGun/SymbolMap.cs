@@ -18,14 +18,14 @@ public class ScriptSymbolMap
 
 public class SymbolMap
 {
-    public SymbolMap(
-        SortedDictionary<int, string> globals,
-        SortedDictionary<int, ScriptSymbolMap> scripts)
+    public SymbolMap(SortedDictionary<int, string> systemVariables, SortedDictionary<int, string> sceneVariables, SortedDictionary<int, ScriptSymbolMap> scripts)
     {
-        Globals = globals;
-        Scripts = scripts;
+        SystemVariables = systemVariables ?? new();
+        SceneVariables = sceneVariables ?? new();
+        Scripts = scripts ?? new();
     }
 
-    public SortedDictionary<int, string> Globals { get; }
+    public SortedDictionary<int, string> SystemVariables { get; }
+    public SortedDictionary<int, string> SceneVariables { get; }
     public SortedDictionary<int, ScriptSymbolMap> Scripts { get; }
 }
