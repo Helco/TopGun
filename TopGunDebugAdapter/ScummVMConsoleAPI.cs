@@ -156,7 +156,7 @@ internal partial class ScummVMConsoleAPI
         return result;
     }
 
-    [GeneratedRegex(@"\d+: (\w+) (\d+) @ (\d+)(?: (\d+) args)?(?: (\d+) local variables)?")]
+    [GeneratedRegex(@"\d+: (\w+) (-?\d+) @ (\d+)(?: (\d+) args)?(?: (\d+) local variables)?")]
     private static partial Regex PatternStackFrame();
     public async Task<IReadOnlyList<ScummVMFrame>> Stacktrace(CancellationToken cancel)
     {
