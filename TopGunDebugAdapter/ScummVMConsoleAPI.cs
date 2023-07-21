@@ -215,8 +215,11 @@ internal partial class ScummVMConsoleAPI
     public Task<IReadOnlyDictionary<int, int>> LocalVariables(int scopeIndex, CancellationToken cancel) =>
         VariableCommand($"localVars {scopeIndex}", cancel);
 
-    public Task<IReadOnlyDictionary<int, int>> GlobalVariables(int offset, int count, CancellationToken cancel) =>
-        VariableCommand($"globalVars {offset} {count}", cancel);
+    public Task<IReadOnlyDictionary<int, int>> SceneVariables(int offset, int count, CancellationToken cancel) =>
+        VariableCommand($"sceneVars {offset} {count}", cancel);
+
+    public Task<IReadOnlyDictionary<int, int>> SystemVariables(int offset, int count, CancellationToken cancel) =>
+        VariableCommand($"systemVars {offset} {count}", cancel);
     
     private async Task SimpleCommandIgnoringOutput(string command, int expectLinesToIgnore, CancellationToken cancel)
     {
