@@ -16,8 +16,8 @@ public class RangeDebugInfo
 
     public RangeDebugInfo(IReadOnlyList<int> lengths, IReadOnlyList<int> infos)
     {
-        Lengths = lengths;
-        Infos = infos;
+        Lengths = lengths ?? Array.Empty<int>();
+        Infos = infos ?? Array.Empty<int>();
         if (Lengths.Any() && (Infos.Count % Lengths.Count) != 0)
             throw new ArgumentException("Infos should have exactly some multiple elements as the range lengths");
     }
@@ -42,15 +42,21 @@ public class ScriptDebugInfo
     public int BaseLine { get; }
     public IReadOnlyList<RangeDebugInfo?> LineToByteOffsets { get; }
     public RangeDebugInfo ByteOffsetToLines { get; }
+    public SortedSet<int> SceneVarRefs { get; }
+    public SortedSet<int> SystemVarRefs { get; }
 
     public ScriptDebugInfo(
         int baseLine,
         IReadOnlyList<RangeDebugInfo?> lineToByteOffsets,
-        RangeDebugInfo byteOffsetToLines)
+        RangeDebugInfo byteOffsetToLines,
+        SortedSet<int> sceneVarRefs,
+        SortedSet<int> systemVarRefs)
     {
         BaseLine = baseLine;
-        LineToByteOffsets = lineToByteOffsets;
-        ByteOffsetToLines = byteOffsetToLines;
+        LineToByteOffsets = lineToByteOffsets ?? Array.Empty<RangeDebugInfo?>();
+        ByteOffsetToLines = byteOffsetToLines ?? new(null!, null!);
+        SceneVarRefs = sceneVarRefs ?? new();
+        SystemVarRefs = systemVarRefs ?? new();
     }
 
     public TextPosition? GetTextPosByOffset(int offset)
@@ -81,7 +87,7 @@ public class SceneDebugInfo
 {
     public SceneDebugInfo(SortedDictionary<int, ScriptDebugInfo> scripts)
     {
-        Scripts = scripts;
+        Scripts = scripts ?? new();
     }
 
     public SortedDictionary<int, ScriptDebugInfo> Scripts { get; }
