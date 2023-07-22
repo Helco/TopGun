@@ -24,13 +24,26 @@ internal class PauseService
         this.api = api;
     }
 
-    private bool isPaused = false;
+    private bool _isPaused = false;
+    public event Action<bool>? OnIsPausedChanged;
+    public bool IsPaused
+    {
+        get => _isPaused;
+        set
+        {
+            if (_isPaused == value)
+                return;
+            _isPaused = value;
+            OnIsPausedChanged?.Invoke(value);
+        }
+    }
+
 
     public void SendContinueIfNecessary()
     {
-        if (!isPaused)
+        if (!IsPaused)
             return;
-        isPaused = false;
+        IsPaused = false;
         server.Value.SendContinued(new()
         {
             AllThreadsContinued = false,
@@ -41,15 +54,15 @@ internal class PauseService
 
     public void SendPauseByCommand()
     {
-        if (isPaused)
+        if (IsPaused)
             return;
-        isPaused = true;
+        IsPaused = true;
         SendPauseBy(StoppedEventReason.Entry);
     }
 
     public void SendPauseBy(StoppedEventReason reason)
     {
-        isPaused = true;
+        IsPaused = true;
         server.Value.SendStopped(new()
         {
             AllThreadsStopped = false,
@@ -62,11 +75,11 @@ internal class PauseService
 
     public async Task ContinueScummDueToCommand(CancellationToken cancel)
     {
-        if (isPaused)
+        if (IsPaused)
             return; // if we are paused we probably want to keep it that way
         await api.Continue(cancel);
         logger.LogTrace("Continue ScummVM due to command that should not break");
     }
 
-    public void ContinueWithoutEvent() => isPaused = false;
+    public void ContinueWithoutEvent() => IsPaused = false;
 }

@@ -82,6 +82,7 @@ internal class Program
             .AddSingleton<SceneInfoLoader>()
             .AddSingleton<PauseService>()
             .AddSingleton<BreakpointMapper>()
+            .AddSingleton<FetchVariablesRegistry>()
             .AddTransient(typeof(Lazy<>), typeof(Lazier<>))
             .AddLogging(logConfig => logConfig
                 .AddDebug()

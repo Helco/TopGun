@@ -229,7 +229,7 @@ internal partial class ScummVMConsoleAPI
         return (scenes, curSceneI);
     }
 
-    [GeneratedRegex(@"(\d+) = (\d+)")]
+    [GeneratedRegex(@"(\d+) = (-?\d+)")]
     private static partial Regex PatternVariable();
     private async Task<IReadOnlyDictionary<int, int>> VariableCommand(string command, CancellationToken cancel)
     {
