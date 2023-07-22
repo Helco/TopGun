@@ -45,6 +45,14 @@ internal readonly record struct ScummVMPoint(int Id, bool Breaks, ScummVMPointTy
 
 internal readonly record struct ScummVMFrame(int Id, ScummVMCallType Type, int Index, int Offset, int Args, int Locals);
 
+internal readonly record struct ScummVMGameInfo(
+    string Id,
+    string Extra,
+    string Language,
+    string Platform,
+    int SceneVariables,
+    int SystemVariables);
+
 internal partial class ScummVMConsoleAPI
 {
     private static readonly IReadOnlyDictionary<ScummVMPointType, string> pointTypeToString = new Dictionary<ScummVMPointType, string>()
@@ -108,6 +116,30 @@ internal partial class ScummVMConsoleAPI
 
         if (LastMessageHandler?.Invoke(message) != true)
             throw new UnknownConsoleMessageException(null, message);
+    }
+
+    [GeneratedRegex(@"^(\w+)\s+(\w+)?\s+(\w+)\s+(\w+)")]
+    private static partial Regex PatternGameInfoBasic();
+    [GeneratedRegex(@"^Scene/system variables: (\d+)/(\d+)")]
+    private static partial Regex PatternGameInfoVariableCount();
+    public async Task<ScummVMGameInfo> GameInfo(CancellationToken cancel)
+    {
+        var command = "gameInfo";
+        var response = await client.SendCommand(command, cancel);
+        if (response.Count != 2)
+            throw new UnknownConsoleMessageException(command, response);
+        var basicMatch = PatternGameInfoBasic().Match(response[0]);
+        var variableCountMatch = PatternGameInfoVariableCount().Match(response[1]);
+        if (!basicMatch.Success || !variableCountMatch.Success)
+            throw new UnknownConsoleMessageException(command, response);
+
+        return new(
+            basicMatch.Groups[1].Value,
+            basicMatch.Groups[2].Value,
+            basicMatch.Groups[3].Value,
+            basicMatch.Groups[4].Value,
+            int.Parse(variableCountMatch.Groups[1].Value),
+            int.Parse(variableCountMatch.Groups[2].Value));
     }
 
     [GeneratedRegex(@"(break|trace) (\d+) created")]

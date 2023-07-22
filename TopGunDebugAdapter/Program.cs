@@ -103,7 +103,9 @@ internal class Program
                 .WithHandler<StepInHandler>()
                 .WithHandler<StepOutHandler>()
                 .WithHandler<SetBreakpointsHandler>()
-                .WithHandler<EvaluateHandler>());
+                .WithHandler<EvaluateHandler>()
+                .WithHandler<ScopesHandler>()
+                .WithHandler<VariablesHandler>());
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<ILoggerProvider, LogToDebugOutputProvider>());
 
         builder.Logging.SetMinimumLevel(LogLevel.Trace);
