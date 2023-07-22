@@ -79,7 +79,7 @@
         },
         "control-keywords": {
             "name": "keyword.control",
-            "match": "(?:[^\\w]|^)(if|else|while|do|switch|case|default|return)(?:[^\\w]|$)"
+            "match": "(?:[^\\w]|^)(if|else|while|do|switch|case|default|return|break)(?:[^\\w]|$)"
         },
         "global-variable": {
             "name": "variable.other",
