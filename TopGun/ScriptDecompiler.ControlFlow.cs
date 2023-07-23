@@ -280,16 +280,17 @@ partial class ScriptDecompiler
 
         List<(int from, int to)> edgesFromMerge = new();
         MergeEarlyExits();
-        postDominance = new DominanceTree(new EdgeIgnoringBlockIterator()
-        {
-            Parent = new BackwardBlockIterator(astExit),
-            IgnoreEdges = edgesFromMerge.ToHashSet()
-        });
+        if (edgesFromMerge.Any())
+            postDominance = new DominanceTree(new EdgeIgnoringBlockIterator()
+            {
+                Parent = new BackwardBlockIterator(astExit),
+                IgnoreEdges = edgesFromMerge.ToHashSet()
+            });
 
         void MergeEarlyExits()
         {
             var inevitableParents = blocksByOffset.Values
-                .Where(b => b.Outbound.Any() && b.Outbound.All(earlyExitBlocks.Contains));
+                .Where(b => b.Outbound.Count() > 1 && b.Outbound.All(earlyExitBlocks.Contains));
             foreach (var parent in inevitableParents)
             {
                 if (parent.Outbound.All(b => b.Inbound.Count() == 1))
