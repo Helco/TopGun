@@ -44,7 +44,8 @@ internal class SceneInfoLoader
         var sceneInfo = sceneInfos.Values.FirstOrDefault(i => i.Decompiled?.Path?.Equals(path, StringComparison.OrdinalIgnoreCase) == true);
         if (sceneInfo != null)
             return sceneInfo;
-        if (!path.EndsWith(".scripts.txt") || !path.StartsWith(options.ResourceDir.FullName))
+        if (!path.EndsWith(".scripts.txt", StringComparison.OrdinalIgnoreCase) ||
+            !path.StartsWith(options.ResourceDir.FullName, StringComparison.OrdinalIgnoreCase))
             return sceneInfo;
 
         var name = Path.GetFileName(path)[..^(".scripts.txt".Length)];
