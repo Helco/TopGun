@@ -106,6 +106,7 @@ internal class SceneInfoLoader
             logger.LogWarning("Scene info for {sceneName} is missing files: {missingFiles}", name, missingFiles);
 
         await sceneInfosSemaphore.WaitAsync(cancel);
+        cancel.ThrowIfCancellationRequested(); // we do not want to store an (partial) empty info object as we do not try to repair it later
         try
         {
             sceneInfos[name] = new()

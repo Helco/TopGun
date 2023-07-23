@@ -19,7 +19,7 @@ internal class ScummVMConsoleClient : IDisposable
     };
     private readonly SemaphoreSlim semaphore = new(1, 1);
     private readonly TaskCompletionSource connectCompletion = new();
-    private readonly CancellationTokenSource cancelIntervalRead = new();
+    private readonly CancellationTokenSource cancelOperation = new();
     private readonly byte[] buffer = new byte[4096];
     public readonly ILogger<ScummVMConsoleClient> logger;
     private int bufferAvailable = 0;
@@ -37,7 +37,7 @@ internal class ScummVMConsoleClient : IDisposable
         try
         {
             await tcpClient.ConnectAsync(host, port, cancel);
-            intervalReadTask = Task.Run(IntervalRead, cancelIntervalRead.Token);
+            intervalReadTask = Task.Run(IntervalRead, cancelOperation.Token);
             logger.LogInformation("Connected to ScummVM");
             connectCompletion.SetResult();
         }
@@ -57,12 +57,14 @@ internal class ScummVMConsoleClient : IDisposable
         {
             await FlushIncomingMessages();
             cancel.ThrowIfCancellationRequested();
+            // from here on out we cannot cancel without stopping to communicate entirely
+            // otherwise there might be responses misappropriated
 
             logger.LogDebug("Sending command: {command}", command);
             var stream = tcpClient.GetStream();
             var buffer = Encoding.UTF8.GetBytes(command + "\n");
-            await stream.WriteAsync(buffer); // do not cancel the write itself to prevent closing of the socket
-            return await ReadMessage(cancel);
+            await stream.WriteAsync(buffer, cancelOperation.Token);
+            return await ReadMessage(cancelOperation.Token);
         }
         catch(SocketException e) { DisconnectDueTo(e); throw; }
         catch(IOException e) { DisconnectDueTo(e); throw; }
@@ -108,8 +110,7 @@ internal class ScummVMConsoleClient : IDisposable
 
             if (bufferAvailable >= buffer.Length)
                 throw new IOException($"Line is longer than maximum ({buffer.Length})");
-            bufferAvailable += await stream.ReadAsync(buffer.AsMemory(bufferAvailable));
-            // DO NOT cancel the read as this closes the TCP client
+            bufferAvailable += await stream.ReadAsync(buffer.AsMemory(bufferAvailable), cancel);
         }
     }
 
@@ -117,7 +118,7 @@ internal class ScummVMConsoleClient : IDisposable
     {
         while (tcpClient.Available > 0)
         {
-            var message = await ReadMessage(cancelIntervalRead.Token);
+            var message = await ReadMessage(cancelOperation.Token);
             OnMessage?.Invoke(message);
             logger.LogDebug("Got free message: {message}", message);
         }
@@ -125,7 +126,7 @@ internal class ScummVMConsoleClient : IDisposable
 
     private async Task IntervalRead()
     {
-        while (!cancelIntervalRead.IsCancellationRequested)
+        while (!cancelOperation.IsCancellationRequested)
         {
             if (await semaphore.WaitAsync(0))
             {
@@ -142,7 +143,7 @@ internal class ScummVMConsoleClient : IDisposable
                     semaphore.Release();
                 }
             }
-            await Task.Delay(33, cancelIntervalRead.Token);
+            await Task.Delay(33, cancelOperation.Token);
         }
     }
 
@@ -150,7 +151,7 @@ internal class ScummVMConsoleClient : IDisposable
     {
         logger.LogError(e, "Disconnect from ScummVM due to exception");
         try { tcpClient.Dispose(); } catch(Exception) {}
-        cancelIntervalRead.Cancel();
+        cancelOperation.Cancel();
         OnError?.Invoke(e);
     }
 
@@ -160,7 +161,7 @@ internal class ScummVMConsoleClient : IDisposable
         {
             if (disposing)
             {
-                cancelIntervalRead.Cancel();
+                cancelOperation.Cancel();
                 intervalReadTask?.Wait(1000);
                 semaphore.Wait(1000);
                 tcpClient.Dispose();
