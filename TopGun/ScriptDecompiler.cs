@@ -17,6 +17,7 @@ public partial class ScriptDecompiler
         PrintBlockEdges = 1 << 0,
         PrintConstructHierarchy = 1 << 1,
         PrintBlockHierarchy = 1 << 2,
+        PrintEarlyExitBlocks = 1 << 3,
     }
 
     private readonly int scriptId;

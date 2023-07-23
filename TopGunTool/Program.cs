@@ -201,6 +201,7 @@ internal class Program
 
             foreach (var (index, res) in resourceFile.Resources.Select((r, i) => (i, r)).Where(t => t.r.Type == ResourceType.Script))
             {
+                //if (index != 4588) continue;
                 var scriptFull = resourceFile.ReadResource(res);
 
                 scriptOutput.WriteLine();
@@ -212,6 +213,7 @@ internal class Program
                     scriptOutput.WriteLine();
 
                 var decompiler = new ScriptDecompiler(index, scriptFull, resourceFile);
+                //decompiler.Debug = ScriptDecompiler.DebugFlags.All;
                 decompiler.Decompile();
                 if (symbolMap != null)
                     decompiler.ApplySymbolMap(symbolMap);

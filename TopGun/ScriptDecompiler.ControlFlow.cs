@@ -19,6 +19,7 @@ partial class ScriptDecompiler
     private static readonly IReadOnlySet<ScriptOp> SplittingOps = new HashSet<ScriptOp>(BranchingOps)
     {
         ScriptOp.Jump,
+        ScriptOp.Return,
         ScriptOp.Exit
     };
 
@@ -56,7 +57,7 @@ partial class ScriptDecompiler
             .OfType<ASTRootOpInstruction>()
             .ToDictionary(i => i.StartTotalOffset, i => i);
 
-        foreach (var instr in instrByOffset.Values.Where(i => i.RootInstruction.Op == ScriptOp.Exit))
+        foreach (var instr in instrByOffset.Values.Where(i => i.RootInstruction.Op is ScriptOp.Exit or ScriptOp.Return))
             ((ASTBlock)instr.Parent!).AddOutbound(astExit);
 
         var edges = instrByOffset.Values.SelectMany(instr => instr.RootInstruction.Args
@@ -261,12 +262,50 @@ partial class ScriptDecompiler
         }
     }
 
-    /// <remarks>Olga Nicole Volgin - "Analysis of Flow of Control for Reverse Engineering of Sequence Diagrams" - Section 5.4</remarks>
+    // more complicated as the base reference paper to support nested early-exits (early-exit branch in a early-exit subtree)
     private void DetectControllingEdgesAtExit()
     {
         var earlyExitBlocks = astExit.Inbound
-            .Where(b => b.LastRootInstruction.Op == ScriptOp.Exit)
+            .Where(b => b.LastRootInstruction.Op is ScriptOp.Exit or ScriptOp.Return)
+            .Where(b => b.EndTotalOffset != script.Length)
             .ToHashSet<ASTBlock>();
+        var allEarlyExitBlocks = new HashSet<ASTBlock>(earlyExitBlocks);
+        
+        if (Debug.HasFlag(DebugFlags.PrintEarlyExitBlocks) && earlyExitBlocks.Any())
+        {
+            Console.WriteLine("Early exit blocks:");
+            foreach (var block in earlyExitBlocks)
+                Console.WriteLine($"  - {block}");
+        }
+
+        List<(int from, int to)> edgesFromMerge = new();
+        MergeEarlyExits();
+        postDominance = new DominanceTree(new EdgeIgnoringBlockIterator()
+        {
+            Parent = new BackwardBlockIterator(astExit),
+            IgnoreEdges = edgesFromMerge.ToHashSet()
+        });
+
+        void MergeEarlyExits()
+        {
+            var inevitableParents = blocksByOffset.Values
+                .Where(b => b.Outbound.Any() && b.Outbound.All(earlyExitBlocks.Contains));
+            foreach (var parent in inevitableParents)
+            {
+                if (parent.Outbound.All(b => b.Inbound.Count() == 1))
+                {
+                    earlyExitBlocks.RemoveWhere(parent.Outbound.Contains);
+                    earlyExitBlocks.Add(parent);
+                }
+
+                var inevitableChildren = parent.Outbound.Where(b => b.Inbound.Count() == 1);
+                if (parent.Outbound.Count() - 1 == inevitableChildren.Count())
+                {
+                    earlyExitBlocks.RemoveWhere(inevitableChildren.Contains);
+                    edgesFromMerge.AddRange(inevitableChildren.Select(ch => (parent.StartTotalOffset, ch.StartTotalOffset)));
+                }
+            }
+        }
 
         // there are structures where a branch leads into a second branch which 
         // leads always into different early-exits -_-
@@ -277,7 +316,7 @@ partial class ScriptDecompiler
         {
             changed = false;
             edges = FindControllingEdgesFor(earlyExitBlocks);
-            
+
             var mergingEdges = edges
                 .GroupBy(t => t.branch)
                 .Where(edgeGroup => !edgeGroup.Key.Outbound
@@ -286,22 +325,29 @@ partial class ScriptDecompiler
             foreach (var edgeGroup in mergingEdges)
             {
                 // branch always leads to early-exit, it is itself an early-exit
+                allEarlyExitBlocks.Add(edgeGroup.Key);
+                earlyExitBlocks.Add(edgeGroup.Key);
+
+                // we do not need to look at blocks anymore that are just consequences of other exit blocks
                 foreach (var (exit, _, _) in edgeGroup)
                     earlyExitBlocks.Remove(exit);
-                earlyExitBlocks.Add(edgeGroup.Key);
                 changed = true;
             }
         } while (changed);
 
         earlyExitOffsets = earlyExitBlocks.Select(b => b.StartTotalOffset).ToHashSet();
-        controllingEdgesAtExit = edges.Select(t => (t.branch.StartTotalOffset, t.postDom.StartTotalOffset)).ToHashSet();
+        controllingEdgesAtExit = edges
+            .Select(t => (t.branch.StartTotalOffset, t.postDom.StartTotalOffset))
+            .Concat(edgesFromMerge)
+            .ToHashSet();
     }
 
+    /// <remarks>Olga Nicole Volgin - "Analysis of Flow of Control for Reverse Engineering of Sequence Diagrams" - Section 5.4</remarks>
     private (ASTBlock exit, ASTBlock postDom, ASTBlock branch)[] FindControllingEdgesFor(IEnumerable<ASTBlock> earlyExitNodes) => earlyExitNodes
         .SelectMany(exitNode => postDominance.GetDominatees(exitNode).Append(exitNode)
             .SelectMany(postDom => postDom.Inbound.Select(
                 branch => (exitNode, postDom, branch))))
-        .Where(t => !postDominance.Dominates(t.branch, t.exitNode))
+        .Where(t => !postDominance.Dominates(t.exitNode, t.branch))
         .ToArray();
 
     private List<GroupingConstruct> DetectLoops()

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using SixLabors.ImageSharp;
 
 namespace TopGun;
 
@@ -221,8 +222,8 @@ partial class ScriptDecompiler
                 BlocksByOffset = Header.BlocksByOffset,
                 Prefix = header.Instructions.Count > 1 ? header : null,
                 Condition = astCondition,
-                ThenOffset = thenOffset == Merge.StartTotalOffset ? null : thenOffset,
-                ElseOffset = elseOffset == Merge.StartTotalOffset ? null : elseOffset
+                ThenOffset = thenOffset == MergeOffset ? null : thenOffset,
+                ElseOffset = elseOffset == MergeOffset ? null : elseOffset
             };
             astCondition.Parent = astIfElse;
             
@@ -243,14 +244,14 @@ partial class ScriptDecompiler
             var lastInstruction = Header.LastRootInstruction;
             var thenOffset = lastInstruction.Offset + lastInstruction.Args[0].Value;
             var elseOffset = lastInstruction.Offset + lastInstruction.Args[1].Value;
-            
+
             var astIfElse = new ASTIfElse()
             {
                 BlocksByOffset = Header.BlocksByOffset,
                 Prefix = CreatePrefix(Header),
                 Condition = Header,
-                ThenOffset = thenOffset,
-                ElseOffset = elseOffset == Merge.StartTotalOffset ? null : elseOffset
+                ThenOffset = thenOffset == MergeOffset ? null : thenOffset,
+                ElseOffset = elseOffset == MergeOffset ? null : elseOffset
             };
             if (astIfElse.Prefix != null)
                 astIfElse.Prefix.Parent = astIfElse;
@@ -304,7 +305,7 @@ partial class ScriptDecompiler
                 .Select(i => (
                     compare: lastInstruction.Args[argIndex + 1 + i * 2].Value as int?,
                     then: lastInstruction.Args[argIndex + 2 + i * 2].Value));
-            if (lastInstruction.Args[argIndex].Value != Merge.StartTotalOffset)
+            if (lastInstruction.Args[argIndex].Value + lastInstruction.Offset != Merge.StartTotalOffset)
                 explicitCaseOffsets = explicitCaseOffsets.Append((
                     compare: null, // default jump
                     then: lastInstruction.Args[argIndex].Value));
@@ -347,12 +348,20 @@ partial class ScriptDecompiler
     {
         foreach (var block in blocksByOffset.Values)
         {
-            if (block.ContinueBlock != null ||
-                block.ConstructProvidesControlFlow ||
-                !block.CanFallthrough ||
-                block.EndTotalOffset == astExit.StartTotalOffset)
+            if (block.ContinueBlock != null || block.ConstructProvidesControlFlow)
                 continue;
-            block.ContinueOffset = block.EndTotalOffset;
+
+            if (block.CanFallthrough && block.EndTotalOffset != astExit.StartTotalOffset)
+                block.ContinueOffset = block.EndTotalOffset;
+
+            // this can happen with certain early exits degrading selections
+            if (block is ASTNormalBlock normalBlock && block.StartTotalOffset > 0 &&
+                block.Outbound.Count() == 1 && block.Outbound.Single().Inbound.Count() == 1)
+            {
+                if (block.LastRootInstruction.Op == ScriptOp.Jump)
+                    normalBlock.LastInstructionIsRedundantControlFlow = true;
+                block.ContinueOffset = block.OutboundOffsets.Single();
+            }
         }
     }
 }
