@@ -1,6 +1,7 @@
 # topgun-vscode README
 
-This is the README for your extension "topgun-vscode". After writing up a brief description, we recommend including the following sections.
+THIS IS NOT THE TEMPLATE
+This is NOT the README for your extension "topgun-vscode". After writing up a brief description, we recommend including the following sections.
 
 ## Features
 
