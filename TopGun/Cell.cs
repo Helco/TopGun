@@ -19,6 +19,7 @@ public readonly struct Cell
     public Cell(ref SpanReader reader)
     {
         Bitmap = reader.ReadUInt();
+        reader.Position += 4;
         OffsetX = reader.ReadInt();
         OffsetY = reader.ReadInt();
     }

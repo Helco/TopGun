@@ -13,7 +13,7 @@ namespace TopGunTool;
 
 internal class Program
 {
-    static void Main(string[] args) => MainPrintObjects(args);
+    static void Main(string[] args) => MainDecompileScripts(args);
 
     private TextWriter output = null!;
     private ResourceFile resFile = null!;
