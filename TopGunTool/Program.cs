@@ -13,7 +13,7 @@ namespace TopGunTool;
 
 internal class Program
 {
-    static void Main(string[] args) => MainDecompileScripts(args);
+    static void Main(string[] args) => MainPrintObjects(args);
 
     private TextWriter output = null!;
     private ResourceFile resFile = null!;
@@ -109,6 +109,15 @@ internal class Program
         }
     }
 
+    private void WriteConstStrings()
+    {
+        if (resFile.ConstStrings.Count == 0)
+            return;
+        output.WriteLine("Const strings");
+        foreach (var (offset, value) in resFile.ConstStrings)
+            output.WriteLine($"{offset | 0x8000:D5}: {value}");
+    }
+
     static void MainPrintObjects(string[] args)
     {
         var allPaths = Directory.GetFiles(@"C:\dev\TopGun\games", "*.bin", SearchOption.AllDirectories);
@@ -124,6 +133,7 @@ internal class Program
             var writer = new Program();
             writer.output = objectOutput;
             writer.resFile = resourceFile;
+            writer.WriteConstStrings();
             foreach (var (index, res) in resourceFile.Resources.Select((r, i) => (i, r)))
             {
                 if (res.Type == ResourceType.Script || res.Type == ResourceType.Queue)

@@ -205,7 +205,7 @@ public unsafe class ResourceFile
     public IReadOnlyList<byte[]> Entries { get; }
     public IReadOnlyList<byte[]> IndexBuffers { get; }
     public IReadOnlyList<KeyValuePair<uint, uint>> Variables { get; }
-    public IReadOnlyList<string> ConstStrings { get; }
+    public IReadOnlyDictionary<int, string> ConstStrings { get; }
     public IReadOnlyList<byte[]> ScriptSections { get; }
     public IReadOnlyList<Rgba32> Palette { get; }
     public IReadOnlyList<string> NameTable { get; }
@@ -254,9 +254,9 @@ public unsafe class ResourceFile
         ConstStrings = ReadStrings(stream, keyResources[(int)KeyResourceID.ConstStrings]);
         ScriptSections = ReadScripts(stream, keyResources[(int)KeyResourceID.Scripts], res);
         Palette = ReadPalette(stream, keyResources[(int)KeyResourceID.Palette]);
-        NameTable = ReadStrings(stream, keyResources[(int)KeyResourceID.NameTable]);
+        NameTable = ReadStrings(stream, keyResources[(int)KeyResourceID.NameTable]).Values.ToArray();
         Plugins = ReadPlugins(stream, keyResources);
-        SourceFile = ReadStrings(stream, keyResources[(int)KeyResourceID.SourceFile]).FirstOrDefault() ?? "";
+        SourceFile = ReadStrings(stream, keyResources[(int)KeyResourceID.SourceFile]).FirstOrDefault().Value ?? "";
 
         UnknownKeyResource8 = ReadUnknown(stream, keyResources[(int)KeyResourceID.Unknown8]);
         UnknownKeyResource9 = ReadUnknown(stream, keyResources[(int)KeyResourceID.Unknown9]);
@@ -305,19 +305,19 @@ public unsafe class ResourceFile
         return result;
     }
 
-    private static IReadOnlyList<string> ReadStrings(Stream stream, OffsetSize range)
+    private static IReadOnlyDictionary<int, string> ReadStrings(Stream stream, OffsetSize range)
     {
+        var result = new Dictionary<int, string>();
         var data = ReadUnknown(stream, range);
         if (data.Length == 0)
-            return Array.Empty<string>();
+            return result;
 
-        var result = new List<string>();
         for (int startI = 0; startI < data.Length;)
         {
             var endI = Array.IndexOf(data, (byte)0, startI);
             if (endI < 0)
                 throw new InvalidDataException("String in key resource has no terminator");
-            result.Add(Encoding.UTF8.GetString(data, startI, endI - startI));
+            result.Add(startI, Encoding.UTF8.GetString(data, startI, endI - startI));
             startI = endI + 1;
         }
         return result;
@@ -387,14 +387,14 @@ public unsafe class ResourceFile
 
     private Plugin[] ReadPlugins(Stream stream, ReadOnlySpan<OffsetSize> keyResources)
     {
-        var plugins = ReadStrings(stream, keyResources[(int)KeyResourceID.Plugins]);
-        var pluginProcs = ReadStrings(stream, keyResources[(int)KeyResourceID.PluginProcs]);
+        var plugins = ReadStrings(stream, keyResources[(int)KeyResourceID.Plugins]).Values.ToArray();
+        var pluginProcs = ReadStrings(stream, keyResources[(int)KeyResourceID.PluginProcs]).Values.ToArray();
         var indexRange = keyResources[(int)KeyResourceID.PluginIndexPerProc];
         var pluginIndexPerProc = Architecture != ResourceArchitecture.Bits32
             ? ReadStructs<ushort>(stream, indexRange).Select(i => (uint)i).ToArray()
             : ReadStructs<uint>(stream, indexRange);
 
-        if (pluginProcs.Count != pluginIndexPerProc.Length || pluginIndexPerProc.Any(i => i >= plugins.Count))
+        if (pluginProcs.Length != pluginIndexPerProc.Length || pluginIndexPerProc.Any(i => i >= plugins.Length))
             throw new InvalidDataException("Invalid sizes of plugin key resources");
         var procsPerIndex = pluginProcs
             .Zip(pluginIndexPerProc)
